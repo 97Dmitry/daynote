@@ -1,0 +1,13 @@
+/build/bin/
+/frontend/node_modules/
+/frontend/dist/
+/.superpowers/
+/.tools/
+*.db
+*.db-*
+*.exe
+*.test
+*.log
+.env*
+settings.json
+daynote-backup-*.json
