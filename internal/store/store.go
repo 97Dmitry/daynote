@@ -32,7 +32,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db, state: Snapshot{Version: 1, Topics: []Topic{}, Notes: []Note{}, Tasks: []Task{}}}
+	s := &Store{db: db, state: Snapshot{Version: 2, Topics: []Topic{}, Notes: []Note{}, Tasks: []Task{}}}
 	fail := func(e error) (*Store, error) { _ = db.Close(); return nil, e }
 	if _, err = db.Exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;"); err != nil {
 		return fail(err)
@@ -41,7 +41,7 @@ func Open(path string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version != 0 && version != 1 {
+	if version != 0 && version != 1 && version != 2 {
 		return fail(errors.New("неподдерживаемая версия базы; данные не изменены"))
 	}
 	if version == 0 {
@@ -53,6 +53,13 @@ func Open(path string) (*Store, error) {
 			return fail(errors.New("неизвестная структура базы; данные не изменены"))
 		}
 		_, err = db.Exec(`BEGIN; CREATE TABLE topics(id TEXT PRIMARY KEY,data BLOB NOT NULL); CREATE TABLE notes(id TEXT PRIMARY KEY,topic_id TEXT REFERENCES topics(id) ON DELETE SET NULL,data BLOB NOT NULL); CREATE TABLE tasks(id TEXT PRIMARY KEY,data BLOB NOT NULL); CREATE TABLE task_notes(task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,note_id TEXT REFERENCES notes(id) ON DELETE CASCADE,PRIMARY KEY(task_id,note_id)); PRAGMA user_version=1; COMMIT;`)
+		if err != nil {
+			return fail(err)
+		}
+		version = 1
+	}
+	if version == 1 {
+		_, err = db.Exec(`BEGIN; CREATE TABLE notification_receipts(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,payload BLOB NOT NULL,is_read INTEGER NOT NULL DEFAULT 0); PRAGMA user_version=2; COMMIT;`)
 		if err != nil {
 			return fail(err)
 		}
@@ -109,6 +116,10 @@ func clone(v Snapshot) Snapshot {
 		if v.Tasks[i].NoteIDs == nil {
 			v.Tasks[i].NoteIDs = []string{}
 		}
+		v.Tasks[i].Reminders = slices.Clone(v.Tasks[i].Reminders)
+		if v.Tasks[i].Reminders == nil {
+			v.Tasks[i].Reminders = []Reminder{}
+		}
 	}
 	return v
 }
@@ -134,6 +145,9 @@ func (s *Store) Snapshot() (Snapshot, error) {
 	return clone(s.state), nil
 }
 func (s *Store) change(fn func(*Snapshot) error) error {
+	return s.changeState(fn, false)
+}
+func (s *Store) changeState(fn func(*Snapshot) error, resetNotifications bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	next := clone(s.state)
@@ -148,6 +162,11 @@ func (s *Store) change(fn func(*Snapshot) error) error {
 		return err
 	}
 	defer tx.Rollback()
+	if resetNotifications {
+		if _, err = tx.Exec("DELETE FROM notification_receipts"); err != nil {
+			return err
+		}
+	}
 	oldMaps, newMaps := encode(s.state), encode(next)
 	for _, table := range []string{"tasks", "notes", "topics"} {
 		for id := range oldMaps[table] {
@@ -265,6 +284,11 @@ func (s *Store) SaveTopic(t Topic) (Topic, error) {
 	return t, err
 }
 func (s *Store) SaveTask(t Task) (Task, error) {
+	t.Reminders = slices.Clone(t.Reminders)
+	t.NoteIDs = slices.Clone(t.NoteIDs)
+	if t.Reminders == nil {
+		t.Reminders = []Reminder{}
+	}
 	err := s.change(func(v *Snapshot) error {
 		t.Title = strings.TrimSpace(t.Title)
 		if t.Color == "" {
@@ -286,6 +310,8 @@ func (s *Store) SaveTask(t Task) (Task, error) {
 		}
 		return errors.New("задача не найдена")
 	})
+	t.Reminders = slices.Clone(t.Reminders)
+	t.NoteIDs = slices.Clone(t.NoteIDs)
 	return t, err
 }
 func (s *Store) Delete(kind, id string) error {

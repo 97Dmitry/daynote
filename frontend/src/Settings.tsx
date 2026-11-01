@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Cloud, FolderOpen, KeyRound, ShieldCheck, Download, RotateCcw } from "lucide-react";
+import { Cloud, FolderOpen, KeyRound, ShieldCheck, Download, RotateCcw, Power } from "lucide-react";
 import { api } from "./api";
 import { errorText, type Settings, type Snapshot } from "./types";
 export function SettingsView({
@@ -53,6 +53,55 @@ export function SettingsView({
           {message}
         </div>
       )}
+      <section className="settings-section">
+        <div className="settings-section-title">
+          <Power size={21} />
+          <div>
+            <h2>Фоновая работа</h2>
+            <p>Daynote остаётся доступен в системном трее</p>
+          </div>
+        </div>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            aria-label="Запускать с Windows"
+            disabled={busy || !settings?.autostartSupported}
+            checked={settings?.autostart ?? false}
+            onChange={(e) => {
+              const enabled = e.target.checked;
+              void run(async () => {
+                await api.setAutostart(enabled);
+                setSettings(await api.settings());
+              });
+            }}
+          />
+          Запускать с Windows
+        </label>
+        <p className="muted">
+          {!settings
+            ? "Проверка автозапуска…"
+            : !settings.autostartSupported
+              ? "Автозапуск недоступен на этой платформе."
+              : settings.autostart
+                ? "Автозапуск включён."
+                : "Автозапуск выключен."}
+        </p>
+        {settings?.autostartError && (
+          <p className="inline-error" role="alert">
+            Ошибка автозапуска: {settings.autostartError}
+          </p>
+        )}
+        {settings?.notificationError && (
+          <p className="inline-error" role="alert">
+            Ошибка уведомлений: {settings.notificationError}
+          </p>
+        )}
+        <p className="muted">
+          Крестик и Alt+F4 скрывают окно. Daynote продолжает работать и показывать напоминания.
+          Открыть окно или полностью завершить приложение можно через иконку в трее. При запуске с
+          Windows окно остаётся скрытым.
+        </p>
+      </section>
       <section className="settings-section">
         <div className="settings-section-title">
           <KeyRound size={21} />

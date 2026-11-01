@@ -127,7 +127,7 @@ func TestCanceledBackupWorkerDrainsQueuedChange(t *testing.T) {
 			t.Fatal(err)
 		}
 		dir := t.TempDir()
-		a := &App{data: s, secrets: secrets.NewMemory(), dirty: make(chan struct{}, 1), done: make(chan struct{}), settings: Settings{BackupFolder: dir}}
+		a := &App{startupRead: func() (bool, error) { return false, nil }, data: s, secrets: secrets.NewMemory(), dirty: make(chan struct{}, 1), done: make(chan struct{}), settings: Settings{BackupFolder: dir}}
 		_, err = s.SaveNote(store.Note{Title: "Pending", Date: "2026-11-02"})
 		if err != nil {
 			t.Fatal(err)

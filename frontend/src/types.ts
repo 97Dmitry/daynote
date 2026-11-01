@@ -15,6 +15,23 @@ export type Note = {
   createdAt: string;
   updatedAt: string;
 };
+export type Reminder = {
+  id: string;
+  kind: string;
+  minutesBefore: number;
+  at: string;
+  sound: boolean;
+};
+export type NotificationItem = {
+  id: string;
+  taskId: string;
+  taskTitle: string;
+  taskStart: string;
+  dueAt: string;
+  createdAt: string;
+  sound: boolean;
+  read: boolean;
+};
 export type Task = {
   id: string;
   title: string;
@@ -24,6 +41,7 @@ export type Task = {
   color: string;
   done: boolean;
   noteIds: string[];
+  reminders: Reminder[];
 };
 export type Snapshot = {
   version: number;
@@ -38,6 +56,10 @@ export type Settings = {
   backupError: string;
   dataFolder: string;
   theme: string;
+  autostart: boolean;
+  autostartSupported: boolean;
+  autostartError: string;
+  notificationError: string;
 };
 export type VoiceEvent = {
   sessionId: string;
@@ -64,3 +86,5 @@ export const emptyNote = (topicId = "", date = today()): Note => ({
 export const noteSignature = (n: Note) =>
   JSON.stringify([n.id, n.title, n.body, n.date, n.topicId, n.pinned]);
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+export type CloseRequest = { id: string; quit: boolean };

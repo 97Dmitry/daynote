@@ -7,11 +7,14 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  # A newer main push must not interrupt draft uploads/publication.
+  cancel-in-progress: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
 jobs:
   checks:
     name: Tests and Windows build
+    outputs:
+      artifact-id: ${{ steps.windows-artifact.outputs.artifact-id }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -21,6 +24,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Test release publication without GitHub access
+        run: python3 .github/scripts/test_publish_release.py
       - name: Set up Vite+, Node and pnpm
         uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
@@ -47,7 +52,8 @@ jobs:
           cp -r docs/screenshots build/bin/docs/
           cd build/bin
           sha256sum Daynote.exe > SHA256SUMS.txt
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - id: windows-artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Daynote-windows-x64
           path: build/bin/
@@ -71,3 +77,30 @@ jobs:
           go-version-file: go.mod
       - name: Test Windows packages
         run: go test -race -tags bindings ./...
+  release:
+    name: Publish Windows release
+    needs: [checks, windows-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: daynote-release
+      cancel-in-progress: false
+    steps:
+      - name: Checkout publication script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download exact checked Windows artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.checks.outputs.artifact-id }}
+          path: build/bin
+          merge-multiple: true
+      - name: Publish checked Windows release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python3 .github/scripts/publish-release.py

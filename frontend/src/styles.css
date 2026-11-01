@@ -1321,3 +1321,53 @@ button:hover:not(:disabled) {
   --fc-classic-muted: var(--selection);
   --fc-classic-strong-border: var(--border);
 }
+
+.reminder-editor {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.reminder-row {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  margin: 12px 0;
+}
+.reminder-row .form-row {
+  margin-bottom: 10px;
+}
+.reminder-row .align-center {
+  justify-content: space-between;
+  margin-bottom: 0;
+}
+.notifications-page {
+  padding: 32px;
+  overflow: auto;
+  height: 100%;
+}
+.notification-list {
+  display: grid;
+  gap: 16px;
+  max-width: 900px;
+}
+.notification-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 20px;
+}
+.notification-unread {
+  border-left: 4px solid var(--accent);
+}
+.notification-item h2 {
+  margin: 0 0 6px;
+  font-size: 19px;
+  overflow-wrap: anywhere;
+}
+.notification-times {
+  color: var(--text-muted);
+  margin: 14px 0;
+}
+.notification-times p {
+  margin: 6px 0;
+}

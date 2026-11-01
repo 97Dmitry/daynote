@@ -1,0 +1,6 @@
+# Native desktop boundary
+
+- `Host` owns its hidden top-level window, message loop, tray registration and both owned HICONs on one locked thread. Use its synchronous operation queue; delete shell registration before destroying icon resources. The hidden host receives `TaskbarCreated` and restores Explorer's icon.
+- Keep the Wails main window's normal taskbar/Alt+Tab styles. Only intercept bare `WM_SYSCOMMAND/SC_KEYMENU` (`lParam == 0`) and app-coordinated `WM_CLOSE`; forward other messages, including Alt+Space and OS shutdown. Do not install global keyboard hooks or use cross-thread `SetWindowSubclass`.
+- Main WndProc callback addresses and forwarding records must outlive native references. Restore our procedure on close only if it is still active. Retain a disabled forwarding record for callbacks already entering the thunk; when another subclass remains above ours, keep forwarding through `WM_NCDESTROY`.
+- Registry Run writes occur only through explicit application `SetAutostart`; never exercise actual autostart writes in agent sessions or tests. Portable tests and cross-compilation do not establish real tray/notification/sound/Explorer/sign-in behavior; those require Windows acceptance.

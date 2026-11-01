@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/97Dmitry/daynote/internal/audio"
+	"github.com/97Dmitry/daynote/internal/desktop"
+	"github.com/97Dmitry/daynote/internal/reminders"
 	"github.com/97Dmitry/daynote/internal/secrets"
 	"github.com/97Dmitry/daynote/internal/store"
 	"github.com/97Dmitry/daynote/internal/stt"
@@ -22,33 +24,47 @@ import (
 )
 
 type Settings struct {
-	BackupFolder  string `json:"backupFolder"`
-	KeyConfigured bool   `json:"keyConfigured"`
-	LastBackup    string `json:"lastBackup"`
-	BackupError   string `json:"backupError"`
-	DataFolder    string `json:"dataFolder"`
-	Theme         string `json:"theme"`
+	BackupFolder       string `json:"backupFolder"`
+	KeyConfigured      bool   `json:"keyConfigured"`
+	LastBackup         string `json:"lastBackup"`
+	BackupError        string `json:"backupError"`
+	DataFolder         string `json:"dataFolder"`
+	Theme              string `json:"theme"`
+	Autostart          bool   `json:"autostart"`
+	AutostartSupported bool   `json:"autostartSupported"`
+	AutostartError     string `json:"autostartError"`
+	NotificationError  string `json:"notificationError"`
 }
 type config struct {
 	BackupFolder string `json:"backupFolder"`
 	Theme        string `json:"theme"`
 }
 type App struct {
-	data           *store.Store
-	secrets        secrets.Store
-	voice          *voice.Controller
-	dir            string
-	ctx            context.Context
-	mu             sync.Mutex
-	settings       Settings
-	dirty          chan struct{}
-	cancel         context.CancelFunc
-	done           chan struct{}
-	allowClose     atomic.Bool
-	restoreMu      sync.Mutex
-	preferencesMu  sync.Mutex
-	pickRestore    func() (string, error)
-	confirmRestore func(wruntime.MessageDialogOptions) (string, error)
+	data                                                         *store.Store
+	secrets                                                      secrets.Store
+	voice                                                        *voice.Controller
+	dir                                                          string
+	ctx                                                          context.Context
+	mu                                                           sync.Mutex
+	settings                                                     Settings
+	dirty                                                        chan struct{}
+	cancel                                                       context.CancelFunc
+	done                                                         chan struct{}
+	allowClose                                                   atomic.Bool
+	restoreMu                                                    sync.Mutex
+	preferencesMu                                                sync.Mutex
+	pickRestore                                                  func() (string, error)
+	confirmRestore                                               func(wruntime.MessageDialogOptions) (string, error)
+	host                                                         *desktop.Host
+	nativeHealthy, desktopInitialized, rendererReady, background bool
+	pendingClose                                                 CloseRequest
+	closeOperation                                               sync.Mutex
+	showWindow, hideWindow, quitWindow                           func()
+	startupWrite                                                 func(bool) error
+	startupRead                                                  func() (bool, error)
+	scheduler                                                    *reminders.Service
+	schedulerCancel                                              context.CancelFunc
+	schedulerDone                                                chan struct{}
 }
 
 func newApp(dir string, keys secrets.Store) (*App, error) {
@@ -58,6 +74,24 @@ func newApp(dir string, keys secrets.Store) (*App, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &App{data: data, secrets: keys, dir: dir, dirty: make(chan struct{}, 1), cancel: cancel, done: make(chan struct{}), settings: Settings{DataFolder: dir, Theme: "system"}}
+	a.showWindow = func() {
+		if ctx := a.context(); ctx != nil {
+			wruntime.WindowShow(ctx)
+			wruntime.WindowUnminimise(ctx)
+		}
+	}
+	a.hideWindow = func() {
+		if ctx := a.context(); ctx != nil {
+			wruntime.WindowHide(ctx)
+		}
+	}
+	a.quitWindow = func() {
+		if ctx := a.context(); ctx != nil {
+			wruntime.Quit(ctx)
+		}
+	}
+	a.startupWrite = desktop.SetAutostart
+	a.startupRead = desktop.AutostartEnabled
 	a.pickRestore = func() (string, error) {
 		return wruntime.OpenFileDialog(a.ctx, wruntime.OpenDialogOptions{Title: "Восстановить резервную копию Daynote", Filters: []wruntime.FileFilter{{DisplayName: "Daynote JSON", Pattern: "*.json"}}})
 	}
@@ -94,20 +128,40 @@ func (a *App) emit(name string, value any) {
 		wruntime.EventsEmit(ctx, name, value)
 	}
 }
-func (a *App) shutdown(context.Context) { a.voice.Cancel(); a.cancel(); <-a.done; _ = a.data.Close() }
+func (a *App) shutdown(context.Context) {
+	a.voice.Cancel()
+	a.mu.Lock()
+	stop, done, host := a.schedulerCancel, a.schedulerDone, a.host
+	a.mu.Unlock()
+	if stop != nil {
+		stop()
+		<-done
+	}
+	a.cancel()
+	<-a.done
+	if host != nil {
+		_ = host.Close()
+	}
+	_ = a.data.Close()
+}
 func (a *App) beforeClose(context.Context) bool {
 	if a.allowClose.Load() {
 		return false
 	}
-	a.emit("app:closing", true)
+	a.requestClose(false)
 	return true
 }
-func (a *App) CloseWindow()                  { a.allowClose.Store(true); wruntime.Quit(a.ctx) }
 func (a *App) Load() (store.Snapshot, error) { return a.data.Snapshot() }
 func (a *App) changed() {
 	select {
 	case a.dirty <- struct{}{}:
 	default:
+	}
+	a.mu.Lock()
+	scheduler := a.scheduler
+	a.mu.Unlock()
+	if scheduler != nil {
+		scheduler.Wake()
 	}
 }
 func (a *App) SaveNote(n store.Note) (store.Note, error) {
@@ -147,12 +201,19 @@ func (a *App) Move(kind, id string, delta int, scope string) (store.Snapshot, er
 }
 func (a *App) GetSettings() (Settings, error) {
 	_, ok, err := a.secrets.Get(stt.KeyName("gemini"))
+	enabled, startupErr := a.startupRead()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	out := a.settings
 	out.KeyConfigured = ok
+	out.Autostart = enabled
+	out.AutostartSupported = desktop.Supported
+	if startupErr != nil {
+		out.AutostartError = startupErr.Error()
+	}
 	return out, err
 }
+func (a *App) SetAutostart(enabled bool) error { return a.startupWrite(enabled) }
 func (a *App) SetGeminiKey(key string) error {
 	key = strings.TrimSpace(key)
 	if key == "" {

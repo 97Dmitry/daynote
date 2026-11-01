@@ -19,6 +19,9 @@ func ParseBackup(data []byte) (Snapshot, error) {
 	if err := json.Unmarshal(data, &v); err != nil {
 		return v, errors.New("некорректный JSON резервной копии")
 	}
+	if v.Version == 1 {
+		v.Version = 2
+	}
 	if err := validate(v); err != nil {
 		return v, err
 	}
@@ -38,7 +41,7 @@ func (s *Store) Import(data []byte) error {
 	if err != nil {
 		return err
 	}
-	return s.change(func(next *Snapshot) error { *next = v; return nil })
+	return s.changeState(func(next *Snapshot) error { *next = v; return nil }, true)
 }
 func (s *Store) Export(dir string) (string, error) {
 	info, err := os.Stat(dir)

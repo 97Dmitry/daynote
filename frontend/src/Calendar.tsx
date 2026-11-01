@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import FullCalendar, { type EventDropInfo, type EventResizeDoneInfo } from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/react/daygrid";
 import timeGridPlugin from "@fullcalendar/react/timegrid";
@@ -11,6 +11,7 @@ import "@fullcalendar/react/themes/classic/palette.css";
 import { Plus, FileText, CalendarDays, Check, Trash2 } from "lucide-react";
 import { api } from "./api";
 import { Dialog } from "./Dialog";
+import { ReminderEditor } from "./ReminderEditor";
 import { emptyNote, errorText, type Note, type Snapshot, type Task } from "./types";
 
 const localInput = (s: string) => {
@@ -32,6 +33,7 @@ function newTask(start?: Date, end?: Date): Task {
     color: "#467769",
     done: false,
     noteIds: [],
+    reminders: [],
   };
 }
 
@@ -41,15 +43,32 @@ export function CalendarView({
   onOpenNote,
   onError,
   onBusyChange,
+  openTaskId,
+  onTaskOpened,
 }: {
   data: Snapshot;
   onChange: (s: Snapshot) => void;
   onOpenNote: (n: Note) => void;
   onError: (s: string) => void;
   onBusyChange: (busy: boolean) => void;
+  openTaskId?: string;
+  onTaskOpened?: () => void;
 }) {
   const [editing, setEditing] = useState<Task | null>(null),
     [busy, setBusy] = useState(false);
+  const openedTask = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!openTaskId) {
+      openedTask.current = undefined;
+      return;
+    }
+    if (busy || openedTask.current === openTaskId) return;
+    const task = data.tasks.find((t) => t.id === openTaskId);
+    if (!task) return;
+    openedTask.current = openTaskId;
+    setEditing(task);
+    onTaskOpened?.();
+  }, [openTaskId, data.tasks, busy, onTaskOpened]);
   const markBusy = (value: boolean) => {
     setBusy(value);
     onBusyChange(value);
@@ -192,6 +211,7 @@ export function CalendarView({
       </div>
       {editing && (
         <TaskDialog
+          key={editing.id || "new"}
           task={editing}
           data={data}
           busy={busy}
@@ -233,6 +253,7 @@ function TaskDialog({
   const [value, setValue] = useState<Task>({
       ...task,
       noteIds: [...task.noteIds],
+      reminders: (task.reminders ?? []).map((row) => ({ ...row })),
     }),
     [start, setStart] = useState(localInput(task.start)),
     [end, setEnd] = useState(localInput(task.end)),
@@ -243,7 +264,7 @@ function TaskDialog({
     [newBody, setNewBody] = useState(""),
     [creatingBusy, setCreatingBusy] = useState(false);
   const dirty =
-    JSON.stringify(value) !== JSON.stringify(task) ||
+    JSON.stringify(value) !== JSON.stringify({ ...task, reminders: task.reminders ?? [] }) ||
     start !== localInput(task.start) ||
     end !== localInput(task.end) ||
     newTitle !== "" ||
@@ -376,6 +397,10 @@ function TaskDialog({
               />
             </label>
           </div>
+          <ReminderEditor
+            value={value.reminders}
+            onChange={(reminders) => setValue({ ...value, reminders })}
+          />
           <div className="attachment-heading">
             <h3>Заметки к задаче</h3>
             <button type="button" className="text-button" onClick={() => setCreating(!creating)}>

@@ -1,11 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi, describe, it, expect, beforeEach } from "vite-plus/test";
 import { App } from "./App";
 import { emptyNote, type Snapshot, type VoiceEvent } from "./types";
 
 const fake = vi.hoisted(() => ({
-  state: { version: 1, topics: [], notes: [], tasks: [] } as Snapshot,
+  state: { version: 2, topics: [], notes: [], tasks: [] } as Snapshot,
   listeners: new Map<string, (p: any) => void>(),
   failSave: false,
   closed: false,
@@ -15,6 +15,11 @@ const fake = vi.hoisted(() => ({
 vi.mock("./api", () => ({
   api: {
     windowTheme: () => {},
+    ready: async () => {},
+    showWindow: async () => {},
+    cancelClose: async () => {},
+    notifications: async () => [],
+    acknowledgeNotification: async () => [],
     load: async () => structuredClone(fake.state),
     on: (name: string, f: (p: any) => void) => {
       fake.listeners.set(name, f);
@@ -69,7 +74,7 @@ vi.mock("./api", () => ({
 }));
 beforeEach(() => {
   fake.state = {
-    version: 1,
+    version: 2,
     topics: [],
     notes: [
       { ...emptyNote(), id: "one", title: "Первая" },
@@ -168,12 +173,37 @@ describe("Daynote workflows", () => {
     await u.click(screen.getByRole("button", { name: "Новая задача" }));
     await u.type(screen.getByLabelText("Название задачи"), "Не потерять");
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-    fake.listeners.get("app:closing")?.(true);
-    await Promise.resolve();
+    act(() => fake.listeners.get("app:closing")?.({ id: "quit", quit: true }));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
     expect(fake.closed).toBe(false);
     expect(screen.getByLabelText("Название задачи")).toHaveValue("Не потерять");
     expect(confirm).toHaveBeenCalled();
     confirm.mockRestore();
+  });
+  it("hides with an open task draft without discarding it", async () => {
+    const u = userEvent.setup();
+    render(<App />);
+    await u.click(await screen.findByRole("button", { name: "Календарь" }));
+    await u.click(screen.getByRole("button", { name: "Новая задача" }));
+    await u.type(screen.getByLabelText("Название задачи"), "Сохранить черновик");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    act(() => fake.listeners.get("app:closing")?.({ id: "hide", quit: false }));
+    await waitFor(() => expect(fake.closed).toBe(true));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Название задачи")).toHaveValue("Сохранить черновик");
+    confirm.mockRestore();
+  });
+  it("refuses to hide and preserves the note when saving fails", async () => {
+    const u = userEvent.setup();
+    render(<App />);
+    await screen.findByLabelText("Текст заметки");
+    fake.failSave = true;
+    await u.type(screen.getByLabelText("Текст заметки"), "Не потерять при закрытии");
+    act(() => fake.listeners.get("app:closing")?.({ id: "hide", quit: false }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Диск недоступен");
+    await waitFor(() => expect(screen.getByLabelText("Текст заметки")).toBeEnabled());
+    expect(fake.closed).toBe(false);
+    expect(screen.getByLabelText("Текст заметки")).toHaveValue("Не потерять при закрытии");
   });
   it("saves the edited note before selecting another note", async () => {
     const u = userEvent.setup();

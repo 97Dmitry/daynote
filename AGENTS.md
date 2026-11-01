@@ -9,3 +9,7 @@
 - Public source repository: do not commit build outputs, databases, backups, secrets, local settings or dependencies. Use Vite+ (`vp`) with pnpm and preserve frontend/pnpm-lock.yaml and pnpm-workspace.yaml.
 
 - Theme is a Go preference (system/light/dark) persisted together with backupFolder. Renderer localStorage caches only this UI preference for first paint, never notes. Keep generated Wails files excluded from Vite+ format/lint.
+
+- Background lifecycle: X/Alt+F4 requests a renderer save handshake, then hides; only tray Quit requests exit. Preserve modal drafts on hide and show the window on persistence/native-tray failure. Keep taskbar/Alt+Tab styles intact. See `docs/superpowers/specs/2026-11-02-background-reminders-design.md`.
+- Reminder receipts are persisted before shell delivery. Schema/backup v2 accepts v1 JSON; imports atomically clear runtime notification receipts. Catch-up is a rolling 24-hour window; never add raw receipt history to backups.
+- Autostart writes only the current user's Daynote Run value on an explicit settings action. Do not mutate a real user's registry from agent checks. Releases publish the exact CI artifact after both jobs pass; verify remote publication and checksums before reporting a release.

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Bell,
   ArrowDown,
   ArrowUp,
   CalendarDays,
@@ -15,7 +16,16 @@ import {
   Trash2,
 } from "lucide-react";
 import { api } from "./api";
-import { emptyNote, errorText, noteSignature, type Note, type Snapshot, type Topic } from "./types";
+import {
+  emptyNote,
+  errorText,
+  noteSignature,
+  type Note,
+  type Snapshot,
+  type Topic,
+  type NotificationItem,
+  type CloseRequest,
+} from "./types";
 import { CalendarView } from "./Calendar";
 import { SettingsView } from "./Settings";
 import { Voice } from "./Voice";
@@ -23,8 +33,9 @@ import { Dialog } from "./Dialog";
 import { ThemeProvider, ThemeSelect } from "./Theme";
 import { ContextActions, ActionButton, type MenuAction } from "./ActionMenu";
 import { MarkdownNote } from "./MarkdownNote";
+import { NotificationsView } from "./Notifications";
 
-const empty: Snapshot = { version: 1, topics: [], notes: [], tasks: [] };
+const empty: Snapshot = { version: 2, topics: [], notes: [], tasks: [] };
 export function App() {
   return (
     <ThemeProvider>
@@ -34,6 +45,10 @@ export function App() {
 }
 function Notebook() {
   const [editorMode, setEditorMode] = useState("edit");
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]),
+    [notificationError, setNotificationError] = useState(""),
+    [openTaskId, setOpenTaskId] = useState(""),
+    [closeRequest, setCloseRequest] = useState<CloseRequest | null>(null);
   const [data, setData] = useState<Snapshot>(empty),
     [loaded, setLoaded] = useState(false),
     [view, setView] = useState("notes"),
@@ -61,15 +76,20 @@ function Notebook() {
     let active = true;
     api
       .load()
-      .then((next) => {
+      .then(async (next) => {
         if (active) {
           setData(next);
           select(next.notes[0] || null);
+          await api.ready();
+          if (!active) return;
           setLoaded(true);
           loadedRef.current = true;
         }
       })
-      .catch((e) => setError(errorText(e)));
+      .catch((e) => {
+        setError(errorText(e));
+        void api.ready().catch(() => {});
+      });
     return () => {
       active = false;
     };
@@ -137,27 +157,56 @@ function Notebook() {
     }, 650);
     return () => clearTimeout(timer);
   }, [draft, flush]);
-  useEffect(
-    () =>
-      api.on("app:closing", () => {
-        if (
-          document.querySelector('[role="dialog"]') &&
-          !window.confirm(
-            "Есть открытая карточка или голосовой черновик. Закрыть приложение без сохранения этих изменений?",
-          )
-        )
-          return;
-        if (!loadedRef.current) {
-          void api.close();
-          return;
-        }
-        void run(async () => {
-          await api.cancelVoice();
-          await api.close();
-        });
-      }),
-    [run],
-  );
+  useEffect(() => api.on("app:closing", (request: CloseRequest) => setCloseRequest(request)), []);
+  useEffect(() => {
+    if (!closeRequest || busy || busyRef.current) return;
+    const request = closeRequest;
+    setCloseRequest(null);
+    if (
+      request.quit &&
+      document.querySelector('[role="dialog"]') &&
+      !window.confirm(
+        "Есть открытая карточка или голосовой черновик. Выйти без сохранения этих изменений?",
+      )
+    ) {
+      void api.cancelClose(request.id);
+      return;
+    }
+    busyRef.current = true;
+    setBusy(true);
+    void (async () => {
+      try {
+        if (loadedRef.current) await flush();
+        if (request.quit) await api.cancelVoice();
+        await api.close(request.id);
+      } catch (e) {
+        setError(errorText(e));
+        await api.cancelClose(request.id);
+        await api.showWindow();
+      } finally {
+        busyRef.current = false;
+        setBusy(false);
+      }
+    })();
+  }, [closeRequest, busy, flush]);
+  useEffect(() => {
+    void api
+      .notifications()
+      .then(setNotifications)
+      .catch((e) => setNotificationError(errorText(e)));
+    const off = api.on("notifications", setNotifications),
+      offError = api.on("reminder:error", setNotificationError),
+      offDesktop = api.on("desktop:error", (message: string) => setError(message)),
+      offOpen = api.on("notifications:open", () => {
+        void run(async () => setView("notifications"));
+      });
+    return () => {
+      off();
+      offError();
+      offDesktop();
+      offOpen();
+    };
+  }, [run]);
   const navigate = (next: string) =>
     void run(async () => {
       setView(next);
@@ -264,6 +313,24 @@ function Notebook() {
     },
     { label: "Удалить заметку", onSelect: () => removeNote(n.id), disabled: busy, danger: true },
   ];
+  const acknowledge = (id: string) =>
+    void run(async () => {
+      setNotifications(await api.acknowledgeNotification(id));
+      if (!id) setNotificationError("");
+    });
+  const openNotificationTask = (taskId: string) =>
+    void run(async () => {
+      const next = await refresh();
+      if (!next.tasks.some((t) => t.id === taskId)) {
+        setError("Событие уже удалено");
+        setNotifications(await api.notifications());
+        return;
+      }
+      for (const n of notifications.filter((n) => n.taskId === taskId && !n.read))
+        setNotifications(await api.acknowledgeNotification(n.id));
+      setOpenTaskId(taskId);
+      setView("calendar");
+    });
   const filtered = data.notes
     .filter(
       (n) =>
@@ -310,6 +377,17 @@ function Notebook() {
           >
             <CalendarDays size={19} />
             Календарь
+          </button>
+          <button
+            className={view === "notifications" ? "active" : ""}
+            onClick={() => navigate("notifications")}
+            disabled={busy}
+          >
+            <Bell size={19} />
+            Уведомления
+            {notifications.some((n) => !n.read) && (
+              <span className="nav-count">{notifications.filter((n) => !n.read).length}</span>
+            )}
           </button>
         </nav>
         <div className="topics-heading">
@@ -662,10 +740,19 @@ function Notebook() {
             onChange={setData}
             onOpenNote={openNote}
             onError={setError}
+            openTaskId={openTaskId}
+            onTaskOpened={() => setOpenTaskId("")}
             onBusyChange={(value) => {
               busyRef.current = value;
               setBusy(value);
             }}
+          />
+        ) : view === "notifications" ? (
+          <NotificationsView
+            items={notifications}
+            error={notificationError}
+            onAcknowledge={acknowledge}
+            onOpenTask={openNotificationTask}
           />
         ) : (
           <SettingsView
