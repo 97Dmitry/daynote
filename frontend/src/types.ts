@@ -43,6 +43,7 @@ export type VoiceEvent = {
   state: string;
   text: string;
   error: string;
+  warning?: string;
 };
 export const today = () => {
   const d = new Date();

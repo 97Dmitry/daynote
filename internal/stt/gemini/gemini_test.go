@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,71 @@ import (
 
 	"github.com/97Dmitry/daynote/internal/stt"
 )
+
+func TestFlushWithAudioAndNoResponseReportsUncertainty(t *testing.T) {
+	p := fake(t, func(ctx context.Context, c *websocket.Conn) {
+		setup(ctx, c)
+		for readJSON(ctx, c) != nil {
+		}
+	})
+	s := session(t, p)
+	if err := s.Open(context.Background(), "mic", "mic", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Push("mic", 16000, 1, []float32{0.5}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	if err := s.Flush(ctx, "mic"); err == nil {
+		t.Fatal("unrecognized audio silently accepted")
+	}
+}
+
+func TestFlushDrainsLaterPhraseInsteadOfReturningOnEarlierFinal(t *testing.T) {
+	p := fake(t, func(ctx context.Context, c *websocket.Conn) {
+		setup(ctx, c)
+		for {
+			m := readJSON(ctx, c)
+			if m == nil {
+				return
+			}
+			input, _ := m["realtimeInput"].(map[string]any)
+			if input["audioStreamEnd"] == true {
+				send(ctx, c, map[string]any{"serverContent": map[string]any{"inputTranscription": map[string]any{"text": "Первая"}}})
+				timer := time.NewTimer(35 * time.Millisecond)
+				select {
+				case <-timer.C:
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				}
+				send(ctx, c, map[string]any{"serverContent": map[string]any{"inputTranscription": map[string]any{"text": "Хвост"}}})
+			}
+		}
+	})
+	s := session(t, p)
+	if err := s.Open(context.Background(), "mic", "mic", nil); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Push("mic", 16000, 1, []float32{0.5})
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	err := s.Flush(ctx, "mic")
+	_ = s.Close()
+	last := ""
+	for event := range s.Events() {
+		if u, ok := event.(stt.Update); ok && u.Kind == stt.KindFinal {
+			last = u.Text
+		}
+	}
+	if last != "Хвост" {
+		t.Fatal("late tail lost after early final", last)
+	}
+	if !errors.Is(err, stt.ErrUnconfirmed) {
+		t.Fatal("stream completion cannot be inferred from utterance final", err)
+	}
+}
 
 func fake(t *testing.T, handle func(context.Context, *websocket.Conn)) *Provider {
 	t.Helper()
@@ -134,7 +200,9 @@ func TestStreamingDictionaryPCMAndFinal(t *testing.T) {
 		}
 	}
 flushed:
-	if err := s.Flush(ctx, "mic"); err != nil {
+	flushCtx, stopFlush := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer stopFlush()
+	if err := s.Flush(flushCtx, "mic"); !errors.Is(err, stt.ErrUnconfirmed) {
 		t.Fatal(err)
 	}
 	select {

@@ -295,7 +295,18 @@ function TaskDialog({
       return;
     }
     try {
-      await onSave({ ...value, start: a.toISOString(), end: b.toISOString() });
+      let noteIds = value.noteIds;
+      if (newTitle.trim() || newBody.trim()) {
+        const id = await createNote();
+        if (!id) return;
+        noteIds = [...noteIds, id];
+      }
+      await onSave({
+        ...value,
+        noteIds,
+        start: a.toISOString(),
+        end: b.toISOString(),
+      });
     } catch (e) {
       setError(errorText(e));
     }
@@ -315,6 +326,7 @@ function TaskDialog({
       setNewTitle("");
       setNewBody("");
       setCreating(false);
+      return n.id;
     } catch (e) {
       setError(errorText(e));
     } finally {

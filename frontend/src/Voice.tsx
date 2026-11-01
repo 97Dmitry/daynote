@@ -16,6 +16,7 @@ export function Voice({
     [state, setState] = useState("connecting"),
     [text, setText] = useState(""),
     [error, setError] = useState(""),
+    [warning, setWarning] = useState(""),
     [busy, setBusy] = useState(false);
   const started = useRef(false);
   useEffect(() => {
@@ -24,6 +25,7 @@ export function Voice({
       setState(e.state);
       setText(e.text);
       setError(e.error);
+      setWarning(e.warning || "");
     });
     if (!started.current) {
       started.current = true;
@@ -48,6 +50,11 @@ export function Voice({
   };
   const close = async () => {
     if (busy) return;
+    if (
+      (text.trim() || state === "recording") &&
+      !window.confirm("Отменить голосовую заметку и удалить её черновик?")
+    )
+      return;
     setBusy(true);
     try {
       await api.cancelVoice();
@@ -81,7 +88,7 @@ export function Voice({
             : state === "stopping"
               ? "Получаем последнюю фразу…"
               : state === "ready"
-                ? "Текст готов к проверке"
+                ? "Проверьте полученный текст"
                 : "Запись остановлена"}
       </div>
       <label>
@@ -98,6 +105,11 @@ export function Voice({
       {error && (
         <div role="alert" className="inline-error">
           {error}
+        </div>
+      )}
+      {warning && (
+        <div role="status" className="inline-warning">
+          {warning}
         </div>
       )}
       <p className="muted small-copy">

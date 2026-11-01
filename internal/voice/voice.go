@@ -16,6 +16,7 @@ type Event struct {
 	State     string `json:"state"`
 	Text      string `json:"text"`
 	Error     string `json:"error"`
+	Warning   string `json:"warning"`
 }
 type Controller struct {
 	op                 sync.Mutex
@@ -24,6 +25,7 @@ type Controller struct {
 	capture            audio.Capturer
 	emit               func(Event)
 	id, state, message string
+	warning            string
 	parts              map[string]string
 	order              []string
 	session            stt.SessionAPI
@@ -44,7 +46,7 @@ func (c *Controller) event() Event {
 			parts = append(parts, t)
 		}
 	}
-	return Event{SessionID: c.id, State: c.state, Text: strings.Join(parts, "\n"), Error: c.message}
+	return Event{SessionID: c.id, State: c.state, Text: strings.Join(parts, "\n"), Error: c.message, Warning: c.warning}
 }
 func (c *Controller) publish() { c.emit(c.event()) }
 func (c *Controller) Start(id string) error {
@@ -60,6 +62,7 @@ func (c *Controller) Start(id string) error {
 	c.id = id
 	c.state = "connecting"
 	c.message = ""
+	c.warning = ""
 	c.parts = map[string]string{}
 	c.order = nil
 	c.mu.Unlock()
@@ -178,6 +181,10 @@ func (c *Controller) finish(flush bool) error {
 		c.cancel()
 	}
 	c.cancel = nil
+	if errors.Is(err, stt.ErrUnconfirmed) {
+		c.warning = err.Error()
+		err = nil
+	}
 	if err != nil {
 		c.message = err.Error()
 	}
@@ -186,6 +193,7 @@ func (c *Controller) finish(flush bool) error {
 	} else {
 		c.state = "cancelled"
 		c.message = ""
+		c.warning = ""
 		c.parts = map[string]string{}
 		c.order = nil
 	}

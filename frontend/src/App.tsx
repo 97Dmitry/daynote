@@ -729,7 +729,17 @@ function TopicDialog({
   const [name, setName] = useState(topic.name),
     [color, setColor] = useState(topic.color);
   return (
-    <Dialog title={topic.id ? "Изменить тему" : "Новая тема"} onClose={onClose}>
+    <Dialog
+      title={topic.id ? "Изменить тему" : "Новая тема"}
+      onClose={() => {
+        if (
+          !busy &&
+          ((name === topic.name && color === topic.color) ||
+            window.confirm("Закрыть тему без сохранения изменений?"))
+        )
+          onClose();
+      }}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -741,6 +751,7 @@ function TopicDialog({
           <input
             autoFocus
             aria-label="Название темы"
+            disabled={busy}
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -751,6 +762,7 @@ function TopicDialog({
           Цвет
           <input
             aria-label="Цвет темы"
+            disabled={busy}
             type="color"
             value={color}
             onChange={(e) => setColor(e.target.value)}

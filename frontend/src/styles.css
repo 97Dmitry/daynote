@@ -1063,3 +1063,14 @@ button:hover:not(:disabled) {
     animation: none !important;
   }
 }
+
+.inline-warning {
+  background: #fff7df;
+  color: #876d2d;
+  border: 1px solid #f1e3ba;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.7;
+  margin-top: 13px;
+}

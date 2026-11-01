@@ -1,0 +1,3 @@
+* text=auto
+# Keep the upstream Wails generator output byte-for-byte; its blank lines contain tabs.
+frontend/wailsjs/** -whitespace

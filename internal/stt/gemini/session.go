@@ -29,9 +29,8 @@ type stream struct {
 	ctx                   context.Context
 	cancel                context.CancelFunc
 	out                   chan outbound
-	finals                chan struct{}
 	ready, failed, closed bool // protected by Session.mu
-	hasPartial            bool // protected by Session.mu; unresolved interim text
+	hadAudio              bool // protected by Session.mu; at least one PCM frame was queued
 }
 
 type Session struct {
@@ -87,7 +86,7 @@ func (s *Session) Open(ctx context.Context, id, _ string, phrases []string) erro
 		return errors.New("Поток уже открыт")
 	}
 	streamCtx, cancel := context.WithCancel(s.ctx)
-	st := &stream{id: id, ctx: streamCtx, cancel: cancel, out: make(chan outbound, maxQueued), finals: make(chan struct{}, 1)}
+	st := &stream{id: id, ctx: streamCtx, cancel: cancel, out: make(chan outbound, maxQueued)}
 	s.streams[id] = st
 	s.wg.Add(1)
 	s.mu.Unlock()
@@ -149,6 +148,7 @@ func (s *Session) Push(id string, rate, channels int, samples []float32) error {
 	b, _ := json.Marshal(map[string]any{"realtimeInput": map[string]any{"audio": map[string]any{"data": pcm16(samples, channels), "mimeType": fmt.Sprintf("audio/pcm;rate=%d", rate)}}})
 	select {
 	case st.out <- outbound{data: b}:
+		st.hadAudio = st.hadAudio || len(samples) > 0
 		return nil
 	default:
 		return stt.ErrBackpressure
@@ -164,10 +164,6 @@ func (s *Session) Flush(ctx context.Context, id string) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	select {
-	case <-st.finals:
-	default:
-	}
 	msg := outbound{data: []byte(`{"realtimeInput":{"audioStreamEnd":true}}`), written: make(chan error, 1)}
 	select {
 	case st.out <- msg:
@@ -186,30 +182,23 @@ func (s *Session) Flush(ctx context.Context, id string) error {
 	case <-st.ctx.Done():
 		return errors.New("Поток Gemini закрыт")
 	}
-	for {
-		select {
-		case <-st.finals:
-			s.mu.Lock()
-			pending := st.hasPartial
-			s.mu.Unlock()
-			if !pending {
-				return nil
-			}
-			// turnComplete alone does not confirm an outstanding transcription.
-		case <-st.ctx.Done():
-			return errors.New("Поток Gemini закрыт")
-		case <-ctx.Done():
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				s.mu.Lock()
-				pending := st.hasPartial
-				s.mu.Unlock()
-				if pending {
-					return errors.New("Gemini не подтвердил последнюю фразу: время ожидания истекло; промежуточный текст не отправлен")
-				}
-				return nil
-			}
-			return ctx.Err()
+	s.mu.Lock()
+	hadAudio := st.hadAudio
+	s.mu.Unlock()
+	if !hadAudio {
+		return nil
+	}
+	// The API's final/turnComplete events acknowledge an utterance, not our
+	// audioStreamEnd marker. Keep draining the entire bounded window: an earlier
+	// final may still be followed by the last phrase. Never invent a stream ack.
+	select {
+	case <-st.ctx.Done():
+		return errors.New("Поток Gemini закрыт")
+	case <-ctx.Done():
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return stt.ErrUnconfirmed
 		}
+		return ctx.Err()
 	}
 }
 func (s *Session) CloseStream(id string) error {
@@ -311,22 +300,10 @@ func (s *Session) read(st *stream) {
 		}
 		if content := ev.ServerContent; content != nil {
 			if content.Interim != nil && strings.TrimSpace(content.Interim.Text) != "" {
-				s.mu.Lock()
-				st.hasPartial = true
-				s.mu.Unlock()
 				update(stt.KindPartial, content.Interim.Text)
 			}
 			if content.Final != nil {
-				s.mu.Lock()
-				st.hasPartial = false
-				s.mu.Unlock()
 				update(stt.KindFinal, content.Final.Text)
-			}
-			if content.Final != nil || content.TurnComplete {
-				select {
-				case st.finals <- struct{}{}:
-				default:
-				}
 			}
 		}
 		if ev.GoAway != nil {

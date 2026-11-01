@@ -2,6 +2,7 @@ package voice
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/97Dmitry/daynote/internal/audio"
 	"github.com/97Dmitry/daynote/internal/stt"
 	"sync"
@@ -9,9 +10,10 @@ import (
 )
 
 type fakeSession struct {
-	events  chan any
-	mu      sync.Mutex
-	flushed bool
+	events   chan any
+	mu       sync.Mutex
+	flushed  bool
+	flushErr error
 }
 
 func (f *fakeSession) Open(context.Context, string, string, []string) error { return nil }
@@ -21,7 +23,7 @@ func (f *fakeSession) Flush(context.Context, string) error {
 	f.flushed = true
 	f.mu.Unlock()
 	f.events <- stt.Update{UtteranceID: "u", Kind: stt.KindFinal, Text: "Последняя фраза"}
-	return nil
+	return f.flushErr
 }
 func (f *fakeSession) CloseStream(string) error { return nil }
 func (f *fakeSession) Events() <-chan any       { return f.events }
@@ -74,5 +76,28 @@ func TestStopIncludesLastFinalAndCancelDiscards(t *testing.T) {
 	}
 	if s.flushed {
 		t.Fatal("cancel flushed audio")
+	}
+}
+
+func TestUnconfirmedStopPreservesTextAndShowsReviewWarning(t *testing.T) {
+	s := &fakeSession{events: make(chan any, 8), flushErr: stt.ErrUnconfirmed}
+	var mu sync.Mutex
+	var latest Event
+	c := New(fakeProvider{s}, fakeCapture{}, func(e Event) { mu.Lock(); latest = e; mu.Unlock() })
+	if err := c.Start("review"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Stop(); err != nil {
+		t.Fatal("review warning prevented use of available text", err)
+	}
+	mu.Lock()
+	got := latest
+	mu.Unlock()
+	b, _ := json.Marshal(got)
+	var fields map[string]any
+	_ = json.Unmarshal(b, &fields)
+	warning, _ := fields["warning"].(string)
+	if got.Text != "Последняя фраза" || got.Error != "" || warning == "" {
+		t.Fatal("missing preserved draft/review warning", got)
 	}
 }

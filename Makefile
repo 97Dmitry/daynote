@@ -15,7 +15,7 @@ install:
 bindings:
 	go run -tags bindings .
 ifneq ($(OS),Windows_NT)
-	chmod 644 frontend/wailsjs/runtime/*
+	chmod 644 frontend/wailsjs/runtime/* frontend/wailsjs/go/main/* frontend/wailsjs/go/models.ts
 endif
 test:
 	go test -race ./...

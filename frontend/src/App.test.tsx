@@ -9,6 +9,7 @@ const fake = vi.hoisted(() => ({
   listeners: new Map<string, (p: any) => void>(),
   failSave: false,
   closed: false,
+  saveTopicWait: null as null | Promise<void>,
 }));
 vi.mock("./api", () => ({
   api: {
@@ -41,6 +42,12 @@ vi.mock("./api", () => ({
       ];
       return saved;
     },
+    saveTopic: async (t: any) => {
+      if (fake.saveTopicWait) await fake.saveTopicWait;
+      const saved = { ...t, id: t.id || "topic" };
+      fake.state.topics = [saved];
+      return saved;
+    },
     startVoice: async () => {},
     stopVoice: async () => {},
     cancelVoice: async () => {},
@@ -62,8 +69,54 @@ beforeEach(() => {
   fake.listeners.clear();
   fake.failSave = false;
   fake.closed = false;
+  fake.saveTopicWait = null;
 });
 describe("Daynote workflows", () => {
+  it("preserves a changed topic on Escape and locks fields during save", async () => {
+    const u = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: "Открыть заметку Первая" });
+    await u.click(screen.getByRole("button", { name: "Добавить тему" }));
+    await u.type(screen.getByLabelText("Название темы"), "Работа");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await u.keyboard("{Escape}");
+    expect(screen.queryByLabelText("Название темы")).toHaveValue("Работа");
+    let finish!: () => void;
+    fake.saveTopicWait = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    await u.click(screen.getByRole("button", { name: "Сохранить тему" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Название темы")).toBeDisabled(),
+    );
+    finish();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    confirm.mockRestore();
+  });
+  it("saves a pending inline note when the task is saved", async () => {
+    const u = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: "Открыть заметку Первая" });
+    await u.click(screen.getByRole("button", { name: "Календарь" }));
+    await u.click(screen.getByRole("button", { name: "Новая задача" }));
+    await u.type(screen.getByLabelText("Название задачи"), "Созвон");
+    await u.click(screen.getByRole("button", { name: "Новая заметка" }));
+    await u.type(
+      screen.getByLabelText("Заголовок новой заметки к задаче"),
+      "Повестка",
+    );
+    await u.type(
+      screen.getByLabelText("Текст новой заметки к задаче"),
+      "Не потерять пункты",
+    );
+    await u.click(screen.getByRole("button", { name: "Сохранить задачу" }));
+    await waitFor(() => expect(fake.state.tasks).toHaveLength(1));
+    const note = fake.state.notes.find((n) => n.title === "Повестка");
+    expect(note?.body).toBe("Не потерять пункты");
+    expect(fake.state.tasks[0].noteIds).toContain(note?.id);
+  });
   it("asks before closing a window with an open task draft", async () => {
     const u = userEvent.setup();
     render(<App />);
@@ -154,6 +207,12 @@ describe("Daynote workflows", () => {
         "Моя мысль",
       ),
     );
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await u.keyboard("{Escape}");
+    expect(screen.queryByLabelText("Распознанный текст")).toHaveValue(
+      "Моя мысль",
+    );
+    confirm.mockRestore();
     expect(screen.getByLabelText("Текст заметки")).toHaveValue("");
     await u.click(screen.getByRole("button", { name: "Добавить в заметку" }));
     expect(screen.getByLabelText("Текст заметки")).toHaveValue("Моя мысль");

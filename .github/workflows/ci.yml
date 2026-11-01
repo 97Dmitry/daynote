@@ -45,6 +45,7 @@ jobs:
           cp README.md THIRD_PARTY_NOTICES.md build/bin/
           mkdir -p build/bin/docs
           cp docs/windows-acceptance.md build/bin/docs/
+          cp -r docs/screenshots build/bin/docs/
           cd build/bin
           sha256sum Daynote.exe > SHA256SUMS.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

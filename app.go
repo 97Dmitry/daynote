@@ -32,18 +32,20 @@ type config struct {
 	BackupFolder string `json:"backupFolder"`
 }
 type App struct {
-	data       *store.Store
-	secrets    secrets.Store
-	voice      *voice.Controller
-	dir        string
-	ctx        context.Context
-	mu         sync.Mutex
-	settings   Settings
-	dirty      chan struct{}
-	cancel     context.CancelFunc
-	done       chan struct{}
-	allowClose atomic.Bool
-	restoreMu  sync.Mutex
+	data           *store.Store
+	secrets        secrets.Store
+	voice          *voice.Controller
+	dir            string
+	ctx            context.Context
+	mu             sync.Mutex
+	settings       Settings
+	dirty          chan struct{}
+	cancel         context.CancelFunc
+	done           chan struct{}
+	allowClose     atomic.Bool
+	restoreMu      sync.Mutex
+	pickRestore    func() (string, error)
+	confirmRestore func(wruntime.MessageDialogOptions) (string, error)
 }
 
 func newApp(dir string, keys secrets.Store) (*App, error) {
@@ -53,6 +55,12 @@ func newApp(dir string, keys secrets.Store) (*App, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &App{data: data, secrets: keys, dir: dir, dirty: make(chan struct{}, 1), cancel: cancel, done: make(chan struct{}), settings: Settings{DataFolder: dir}}
+	a.pickRestore = func() (string, error) {
+		return wruntime.OpenFileDialog(a.ctx, wruntime.OpenDialogOptions{Title: "Восстановить резервную копию Daynote", Filters: []wruntime.FileFilter{{DisplayName: "Daynote JSON", Pattern: "*.json"}}})
+	}
+	a.confirmRestore = func(options wruntime.MessageDialogOptions) (string, error) {
+		return wruntime.MessageDialog(a.ctx, options)
+	}
 	b, err := os.ReadFile(filepath.Join(dir, "settings.json"))
 	if err == nil {
 		var cfg config
@@ -259,7 +267,7 @@ func (a *App) backupLoop(ctx context.Context) {
 	}
 }
 func (a *App) RestoreBackup() (store.Snapshot, error) {
-	path, err := wruntime.OpenFileDialog(a.ctx, wruntime.OpenDialogOptions{Title: "Восстановить резервную копию Daynote", Filters: []wruntime.FileFilter{{DisplayName: "Daynote JSON", Pattern: "*.json"}}})
+	path, err := a.pickRestore()
 	if err != nil {
 		return store.Snapshot{}, err
 	}
@@ -278,11 +286,11 @@ func (a *App) RestoreBackup() (store.Snapshot, error) {
 	if _, err = store.ParseBackup(data); err != nil {
 		return store.Snapshot{}, err
 	}
-	answer, err := wruntime.MessageDialog(a.ctx, wruntime.MessageDialogOptions{Type: wruntime.QuestionDialog, Title: "Заменить данные?", Message: "Текущие заметки, темы и задачи будут заменены резервной копией. Перед заменой сохранится локальная аварийная копия.", Buttons: []string{"Заменить", "Отмена"}, DefaultButton: "Отмена", CancelButton: "Отмена"})
+	answer, err := a.confirmRestore(wruntime.MessageDialogOptions{Type: wruntime.QuestionDialog, Title: "Заменить данные?", Message: "Текущие заметки, темы и задачи будут заменены резервной копией. Перед заменой сохранится локальная аварийная копия.", Buttons: []string{"Yes", "No"}, DefaultButton: "No", CancelButton: "No"})
 	if err != nil {
 		return store.Snapshot{}, err
 	}
-	if answer != "Заменить" {
+	if answer != "Yes" {
 		return a.Load()
 	}
 	if err = a.restore(data); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/97Dmitry/daynote/internal/secrets"
 	"github.com/97Dmitry/daynote/internal/store"
+	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,6 +62,37 @@ func TestAppBackupRestoreAndSettingsExcludeKey(t *testing.T) {
 	entries, _ := os.ReadDir(filepath.Join(dir, "recovery"))
 	if len(entries) != 1 {
 		t.Fatal("missing recovery backup")
+	}
+}
+
+func TestNativeRestoreConfirmationYesAndNo(t *testing.T) {
+	a, err := newApp(t.TempDir(), secrets.NewMemory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.shutdown(context.Background())
+	_, _ = a.SaveNote(store.Note{Title: "Before", Date: "2026-11-02"})
+	path, err := a.data.Export(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = a.SaveNote(store.Note{Title: "After", Date: "2026-11-03"})
+	a.pickRestore = func() (string, error) { return path, nil }
+	a.confirmRestore = func(wruntime.MessageDialogOptions) (string, error) { return "No", nil }
+	snap, err := a.RestoreBackup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Notes) != 2 {
+		t.Fatal("negative confirmation changed data")
+	}
+	a.confirmRestore = func(wruntime.MessageDialogOptions) (string, error) { return "Yes", nil }
+	snap, err = a.RestoreBackup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Notes) != 1 || snap.Notes[0].Title != "Before" {
+		t.Fatal("affirmative Windows confirmation did not restore snapshot")
 	}
 }
 
