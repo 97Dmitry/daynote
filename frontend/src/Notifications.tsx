@@ -10,7 +10,7 @@ export function NotificationsView({
   items: NotificationItem[];
   error: string;
   onAcknowledge: (id: string) => void;
-  onOpenTask: (taskId: string) => void;
+  onOpenTask: (taskId: string, occurrenceDate?: string) => void;
 }) {
   const unread = items.filter((item) => !item.read).length;
   return (
@@ -59,7 +59,10 @@ export function NotificationsView({
               </p>
             </div>
             <div className="settings-actions">
-              <button className="secondary-button" onClick={() => onOpenTask(item.taskId)}>
+              <button
+                className="secondary-button"
+                onClick={() => onOpenTask(item.taskId, item.occurrenceDate)}
+              >
                 Открыть задачу
               </button>
               {!item.read && (

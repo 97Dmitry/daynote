@@ -30,7 +30,7 @@ func TestMigrationPreservesLegacyTasks(t *testing.T) {
 	}
 	defer s.Close()
 	snap, _ := s.Snapshot()
-	if snap.Version != 2 || len(snap.Tasks) != 1 || snap.Tasks[0].Title != "Legacy event" {
+	if snap.Version != 3 || len(snap.Tasks) != 1 || snap.Tasks[0].Title != "Legacy event" {
 		t.Fatal(snap)
 	}
 	if _, err = s.Notifications(); err != nil {
@@ -127,7 +127,7 @@ func TestReminderCatchupAndBackupRestore(t *testing.T) {
 		t.Fatal(due, err)
 	}
 	snapshot, _ := s.Snapshot()
-	if snapshot.Version != 2 {
+	if snapshot.Version != 3 {
 		t.Fatal(snapshot.Version)
 	}
 	data, _ := json.Marshal(snapshot)
@@ -174,13 +174,13 @@ func TestReminderCatchupAndBackupRestore(t *testing.T) {
 func TestLegacyBackupIsUpgradedAndFutureVersionRejected(t *testing.T) {
 	legacy := []byte(`{"version":1,"topics":[],"notes":[],"tasks":[{"id":"t","title":"Legacy","start":"2026-11-02T09:00:00Z","end":"2026-11-02T10:00:00Z","color":"#467769","noteIds":[]}]}`)
 	s, err := ParseBackup(legacy)
-	if err != nil || s.Version != 2 || len(s.Tasks) != 1 {
+	if err != nil || s.Version != 3 || len(s.Tasks) != 1 {
 		t.Fatal(s, err)
 	}
 	if len(s.Tasks[0].Reminders) != 0 {
 		t.Fatal("legacy reminder invented")
 	}
-	if _, err = ParseBackup([]byte(`{"version":3}`)); err == nil {
+	if _, err = ParseBackup([]byte(`{"version":4}`)); err == nil {
 		t.Fatal("future backup accepted")
 	}
 }

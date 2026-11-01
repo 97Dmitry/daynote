@@ -3,6 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { vi, describe, it, expect, beforeEach } from "vite-plus/test";
 import { App } from "./App";
 import { emptyNote, type Snapshot, type VoiceEvent } from "./types";
+import { EditorView } from "@codemirror/view";
+import { undo } from "@codemirror/commands";
+import { formatMarkdown } from "./markdownFormat";
 
 const fake = vi.hoisted(() => ({
   state: { version: 2, topics: [], notes: [], tasks: [] } as Snapshot,
@@ -11,6 +14,7 @@ const fake = vi.hoisted(() => ({
   closed: false,
   saveTopicWait: null as null | Promise<void>,
   theme: "system",
+  saveNoteWait: null as Promise<void> | null,
 }));
 vi.mock("./api", () => ({
   api: {
@@ -21,6 +25,15 @@ vi.mock("./api", () => ({
     notifications: async () => [],
     acknowledgeNotification: async () => [],
     load: async () => structuredClone(fake.state),
+    occurrences: async () =>
+      fake.state.tasks.map((t) => ({
+        id: t.id,
+        taskId: t.id,
+        date: "",
+        start: t.start,
+        end: t.end,
+        done: t.done,
+      })),
     on: (name: string, f: (p: any) => void) => {
       fake.listeners.set(name, f);
       return () => fake.listeners.delete(name);
@@ -47,9 +60,15 @@ vi.mock("./api", () => ({
       }
       return structuredClone(fake.state);
     },
-    saveNote: async (n: any) => {
+    saveNote: async (n: any, format = true) => {
       if (fake.failSave) throw Error("Диск недоступен");
-      const saved = { ...n, id: n.id || "new-note" };
+      const body = format ? await formatMarkdown(n.body) : n.body;
+      if (fake.saveNoteWait) {
+        const wait = fake.saveNoteWait;
+        fake.saveNoteWait = null;
+        await wait;
+      }
+      const saved = { ...n, body, id: n.id || "new-note" };
       fake.state.notes = [...fake.state.notes.filter((x) => x.id !== saved.id), saved];
       return saved;
     },
@@ -87,9 +106,81 @@ beforeEach(() => {
   fake.closed = false;
   fake.saveTopicWait = null;
   fake.theme = "system";
+  fake.saveNoteWait = null;
   localStorage.clear();
 });
 describe("Daynote workflows", () => {
+  it("keeps editor history across preview tabs and isolates another note", async () => {
+    const u = userEvent.setup();
+    render(<App />);
+    await screen.findByLabelText("Текст заметки");
+    const view = markdownView();
+    setMarkdown("# Заголовок");
+    await u.click(screen.getByRole("button", { name: "Просмотр" }));
+    expect(screen.getByRole("heading", { name: "Заголовок" })).toBeVisible();
+    await u.click(screen.getByRole("button", { name: "Редактор" }));
+    expect(markdownView()).toBe(view);
+    act(() => {
+      undo(view);
+    });
+    expect(markdownText()).toBe("");
+    setMarkdown("Вторая версия");
+    await u.click(screen.getByRole("button", { name: "Открыть заметку Вторая" }));
+    await waitFor(() => expect(screen.getByLabelText("Заголовок заметки")).toHaveValue("Вторая"));
+    expect(markdownView()).not.toBe(view);
+    act(() => {
+      undo(markdownView());
+    });
+    expect(markdownText()).toBe("");
+  });
+  it("formats a clean raw autosave on explicit save", async () => {
+    const u = userEvent.setup();
+    render(<App />);
+    await screen.findByLabelText("Текст заметки");
+    setMarkdown("*   пункт");
+    await waitFor(() =>
+      expect(fake.state.notes.find((n) => n.id === "one")?.body).toBe("*   пункт"),
+    );
+    await u.click(screen.getByRole("button", { name: "Сохранить заметку" }));
+    await waitFor(() =>
+      expect(fake.state.notes.find((n) => n.id === "one")?.body).toBe("- пункт\n"),
+    );
+    expect(markdownText()).toBe("- пункт\n");
+  });
+  it("preserves input typed while a formatted save is in flight", async () => {
+    const u = userEvent.setup();
+    render(<App />);
+    await screen.findByLabelText("Текст заметки");
+    setMarkdown("*   первый");
+    let finish!: () => void;
+    fake.saveNoteWait = new Promise((resolve) => {
+      finish = resolve;
+    });
+    await u.click(screen.getByRole("button", { name: "Сохранить заметку" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Сохранить заметку" })).toHaveTextContent(
+        "Сохранение",
+      ),
+    );
+    setMarkdown("*   первый\n*   второй");
+    finish();
+    await waitFor(() =>
+      expect(fake.state.notes.find((n) => n.id === "one")?.body).toBe("- первый\n- второй\n"),
+    );
+    expect(markdownText()).toBe("- первый\n- второй\n");
+  });
+  it("preserves a task draft when native inbox navigation is declined", async () => {
+    const u = userEvent.setup();
+    render(<App />);
+    await u.click(await screen.findByRole("button", { name: "Календарь" }));
+    await u.click(screen.getByRole("button", { name: "Новая задача" }));
+    await u.type(screen.getByLabelText("Название задачи"), "Черновик");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    act(() => fake.listeners.get("notifications:open")?.(true));
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByLabelText("Название задачи")).toHaveValue("Черновик");
+    confirm.mockRestore();
+  });
   it("changes the theme without leaving the editor", async () => {
     const u = userEvent.setup();
     render(<App />);
@@ -125,7 +216,7 @@ describe("Daynote workflows", () => {
     expect(screen.getByRole("table")).toHaveTextContent("Созвон");
     expect(document.querySelector(".markdown-body script")).toBeNull();
     await u.click(screen.getByRole("button", { name: "Редактор" }));
-    expect(screen.getByLabelText("Текст заметки")).toHaveValue(fake.state.notes[0].body);
+    expect(markdownText()).toBe(fake.state.notes[0].body);
   });
   it("preserves a changed topic on Escape and locks fields during save", async () => {
     const u = userEvent.setup();
@@ -159,7 +250,7 @@ describe("Daynote workflows", () => {
     await u.click(screen.getByRole("button", { name: "Сохранить задачу" }));
     await waitFor(() => expect(fake.state.tasks).toHaveLength(1));
     const note = fake.state.notes.find((n) => n.title === "Повестка");
-    expect(note?.body).toBe("Не потерять пункты");
+    expect(note?.body).toBe("Не потерять пункты\n");
     expect(fake.state.tasks[0].noteIds).toContain(note?.id);
   });
   it("asks before closing a window with an open task draft", async () => {
@@ -194,16 +285,15 @@ describe("Daynote workflows", () => {
     confirm.mockRestore();
   });
   it("refuses to hide and preserves the note when saving fails", async () => {
-    const u = userEvent.setup();
     render(<App />);
     await screen.findByLabelText("Текст заметки");
     fake.failSave = true;
-    await u.type(screen.getByLabelText("Текст заметки"), "Не потерять при закрытии");
+    setMarkdown("Не потерять при закрытии");
     act(() => fake.listeners.get("app:closing")?.({ id: "hide", quit: false }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Диск недоступен");
     await waitFor(() => expect(screen.getByLabelText("Текст заметки")).toBeEnabled());
     expect(fake.closed).toBe(false);
-    expect(screen.getByLabelText("Текст заметки")).toHaveValue("Не потерять при закрытии");
+    expect(markdownText()).toBe("Не потерять при закрытии");
   });
   it("saves the edited note before selecting another note", async () => {
     const u = userEvent.setup();
@@ -221,11 +311,10 @@ describe("Daynote workflows", () => {
     render(<App />);
     await u.click(await screen.findByRole("button", { name: "Открыть заметку Первая" }));
     fake.failSave = true;
-    const body = screen.getByLabelText("Текст заметки");
-    await u.type(body, "Не потерять");
+    setMarkdown("Не потерять");
     await u.click(screen.getByRole("button", { name: "Календарь" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Диск недоступен");
-    expect(body).toHaveValue("Не потерять");
+    expect(markdownText()).toBe("Не потерять");
     expect(screen.getByLabelText("Заголовок заметки")).toHaveValue("Первая");
   });
   it("creates a timed task and attaches an existing note", async () => {
@@ -265,8 +354,21 @@ describe("Daynote workflows", () => {
     await u.keyboard("{Escape}");
     expect(screen.queryByLabelText("Распознанный текст")).toHaveValue("Моя мысль");
     confirm.mockRestore();
-    expect(screen.getByLabelText("Текст заметки")).toHaveValue("");
+    expect(markdownText()).toBe("");
     await u.click(screen.getByRole("button", { name: "Добавить в заметку" }));
-    expect(screen.getByLabelText("Текст заметки")).toHaveValue("Моя мысль");
+    expect(markdownText()).toBe("Моя мысль");
   });
 });
+
+function markdownView() {
+  return EditorView.findFromDOM(screen.getByLabelText("Текст заметки"))!;
+}
+function markdownText() {
+  return markdownView().state.doc.toString();
+}
+function setMarkdown(text: string) {
+  const v = markdownView();
+  act(() =>
+    v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: text }, userEvent: "input" }),
+  );
+}

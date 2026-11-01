@@ -185,6 +185,34 @@ func (a *App) SaveTask(t store.Task) (store.Task, error) {
 	}
 	return out, err
 }
+func (a *App) SaveTaskWithConfirmation(t store.Task, discardExceptions bool) (store.Task, error) {
+	out, err := a.data.SaveTaskWithConfirmation(t, discardExceptions)
+	if err == nil {
+		a.changed()
+	}
+	return out, err
+}
+func (a *App) TaskChangeImpact(t store.Task) (int, error) { return a.data.TaskChangeImpact(t) }
+func (a *App) Occurrences(from, to string) ([]store.Occurrence, error) {
+	return a.data.Occurrences(from, to)
+}
+func (a *App) Occurrence(taskID, date string) (store.Occurrence, error) {
+	return a.data.Occurrence(taskID, date)
+}
+func (a *App) SaveException(taskID string, ex store.TaskException) error {
+	err := a.data.SaveException(taskID, ex)
+	if err == nil {
+		a.changed()
+	}
+	return err
+}
+func (a *App) ResetException(taskID, date string) error {
+	err := a.data.ResetException(taskID, date)
+	if err == nil {
+		a.changed()
+	}
+	return err
+}
 func (a *App) Delete(kind, id string) (store.Snapshot, error) {
 	if err := a.data.Delete(kind, id); err != nil {
 		return store.Snapshot{}, err

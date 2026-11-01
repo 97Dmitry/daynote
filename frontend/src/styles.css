@@ -607,22 +607,32 @@ button:hover:not(:disabled) {
 .title-input::placeholder {
   color: var(--text-muted);
 }
-.body-input {
-  border: 0;
-  border-radius: 0;
-  resize: none;
-  padding: 0;
+.markdown-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.markdown-edit-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.markdown-edit-pane[hidden] {
+  display: none;
+}
+.markdown-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-block: 8px;
+  border-block: 1px solid var(--line);
+}
+.markdown-source {
   flex: 1;
   min-height: 180px;
-  font-size: 16px;
-  line-height: 1.95;
-  color: var(--text);
-  outline-offset: 6px;
-}
-.body-input::placeholder {
-  font-size: 15px;
-  color: var(--text-muted);
-  line-height: 1.9;
+  overflow: hidden;
 }
 .editor-footer {
   display: flex;
@@ -769,6 +779,28 @@ button:hover:not(:disabled) {
   font-size: 14px;
   font-weight: 400;
   color: var(--text);
+}
+.recurrence-editor {
+  padding: 14px 0;
+  margin-bottom: 12px;
+  border-block: 1px solid var(--line);
+}
+.recurrence-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-block: 14px;
+}
+.exception-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-block: 6px;
+}
+.occurrence-description {
+  white-space: pre-wrap;
 }
 .color-label {
   flex-direction: row;

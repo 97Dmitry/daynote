@@ -72,6 +72,7 @@ export namespace store {
 	    createdAt: string;
 	    sound: boolean;
 	    read: boolean;
+	    occurrenceDate?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Notification(source);
@@ -87,6 +88,45 @@ export namespace store {
 	        this.createdAt = source["createdAt"];
 	        this.sound = source["sound"];
 	        this.read = source["read"];
+	        this.occurrenceDate = source["occurrenceDate"];
+	    }
+	}
+	export class Occurrence {
+	    id: string;
+	    taskId: string;
+	    date: string;
+	    start: string;
+	    end: string;
+	    done: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Occurrence(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.taskId = source["taskId"];
+	        this.date = source["date"];
+	        this.start = source["start"];
+	        this.end = source["end"];
+	        this.done = source["done"];
+	    }
+	}
+	export class Recurrence {
+	    weekdays: number[];
+	    timeZone: string;
+	    until: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Recurrence(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.weekdays = source["weekdays"];
+	        this.timeZone = source["timeZone"];
+	        this.until = source["until"];
 	    }
 	}
 	export class Reminder {
@@ -109,6 +149,26 @@ export namespace store {
 	        this.sound = source["sound"];
 	    }
 	}
+	export class TaskException {
+	    date: string;
+	    done: boolean;
+	    skipped: boolean;
+	    start: string;
+	    end: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TaskException(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.done = source["done"];
+	        this.skipped = source["skipped"];
+	        this.start = source["start"];
+	        this.end = source["end"];
+	    }
+	}
 	export class Task {
 	    id: string;
 	    title: string;
@@ -119,6 +179,8 @@ export namespace store {
 	    done: boolean;
 	    noteIds: string[];
 	    reminders: Reminder[];
+	    recurrence?: Recurrence;
+	    exceptions?: TaskException[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Task(source);
@@ -135,6 +197,8 @@ export namespace store {
 	        this.done = source["done"];
 	        this.noteIds = source["noteIds"];
 	        this.reminders = this.convertValues(source["reminders"], Reminder);
+	        this.recurrence = this.convertValues(source["recurrence"], Recurrence);
+	        this.exceptions = this.convertValues(source["exceptions"], TaskException);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -209,6 +273,7 @@ export namespace store {
 		    return a;
 		}
 	}
+	
 	
 
 }

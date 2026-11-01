@@ -19,8 +19,14 @@ func ParseBackup(data []byte) (Snapshot, error) {
 	if err := json.Unmarshal(data, &v); err != nil {
 		return v, errors.New("некорректный JSON резервной копии")
 	}
-	if v.Version == 1 {
-		v.Version = 2
+	if v.Version == 1 || v.Version == 2 {
+		// Legacy versions cannot smuggle unvalidated recurrence fields.
+		for _, t := range v.Tasks {
+			if t.Recurrence != nil || len(t.Exceptions) > 0 {
+				return v, errors.New("повторения требуют резервную копию версии 3")
+			}
+		}
+		v.Version = 3
 	}
 	if err := validate(v); err != nil {
 		return v, err

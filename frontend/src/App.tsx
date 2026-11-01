@@ -34,8 +34,10 @@ import { ThemeProvider, ThemeSelect } from "./Theme";
 import { ContextActions, ActionButton, type MenuAction } from "./ActionMenu";
 import { MarkdownNote } from "./MarkdownNote";
 import { NotificationsView } from "./Notifications";
+import { MarkdownEditor } from "./MarkdownEditor";
+import { formatMarkdown } from "./markdownFormat";
 
-const empty: Snapshot = { version: 2, topics: [], notes: [], tasks: [] };
+const empty: Snapshot = { version: 3, topics: [], notes: [], tasks: [] };
 export function App() {
   return (
     <ThemeProvider>
@@ -48,6 +50,7 @@ function Notebook() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]),
     [notificationError, setNotificationError] = useState(""),
     [openTaskId, setOpenTaskId] = useState(""),
+    [openOccurrenceDate, setOpenOccurrenceDate] = useState(""),
     [closeRequest, setCloseRequest] = useState<CloseRequest | null>(null);
   const [data, setData] = useState<Snapshot>(empty),
     [loaded, setLoaded] = useState(false),
@@ -101,21 +104,33 @@ function Notebook() {
     setDraft(n);
     setStatus("Не сохранено");
   }, []);
-  const flush = useCallback(() => {
+  const flush = useCallback((format = true) => {
     const job = queue.current
       .catch(() => {})
       .then(async () => {
-        while (current.current && noteSignature(current.current) !== saved.current) {
+        while (current.current) {
           const n = { ...current.current },
             signature = noteSignature(n);
-          setStatus("Сохранение…");
           try {
-            const result = await api.saveNote(n);
+            const request = format ? { ...n, body: await formatMarkdown(n.body) } : n;
+            // Formatting is asynchronous too. Never replace text entered since
+            // this checkpoint began; restart with the current draft instead.
+            if (!current.current || noteSignature(current.current) !== signature) continue;
+            if (noteSignature(request) === saved.current) {
+              if (noteSignature(request) !== signature) {
+                current.current = request;
+                setDraft(request);
+              }
+              setStatus("Сохранено");
+              return;
+            }
+            setStatus("Сохранение…");
+            const result = await api.saveNote(request, false);
             setData((prev) => ({
               ...prev,
               notes: prev.notes.map((x) => (x.id === result.id ? result : x)),
             }));
-            saved.current = signature;
+            saved.current = noteSignature(result);
             if (current.current?.id === n.id && noteSignature(current.current) === signature) {
               current.current = result;
               saved.current = noteSignature(result);
@@ -153,7 +168,7 @@ function Notebook() {
   useEffect(() => {
     if (!draft || noteSignature(draft) === saved.current) return;
     const timer = setTimeout(() => {
-      void flush().catch(() => {});
+      void flush(false).catch(() => {});
     }, 650);
     return () => clearTimeout(timer);
   }, [draft, flush]);
@@ -198,6 +213,11 @@ function Notebook() {
       offError = api.on("reminder:error", setNotificationError),
       offDesktop = api.on("desktop:error", (message: string) => setError(message)),
       offOpen = api.on("notifications:open", () => {
+        if (
+          document.querySelector('[role="dialog"]') &&
+          !window.confirm("Открыть уведомления и закрыть карточку без сохранения её изменений?")
+        )
+          return;
         void run(async () => setView("notifications"));
       });
     return () => {
@@ -318,7 +338,7 @@ function Notebook() {
       setNotifications(await api.acknowledgeNotification(id));
       if (!id) setNotificationError("");
     });
-  const openNotificationTask = (taskId: string) =>
+  const openNotificationTask = (taskId: string, occurrenceDate = "") =>
     void run(async () => {
       const next = await refresh();
       if (!next.tasks.some((t) => t.id === taskId)) {
@@ -326,9 +346,12 @@ function Notebook() {
         setNotifications(await api.notifications());
         return;
       }
-      for (const n of notifications.filter((n) => n.taskId === taskId && !n.read))
+      for (const n of notifications.filter(
+        (n) => n.taskId === taskId && (n.occurrenceDate ?? "") === occurrenceDate && !n.read,
+      ))
         setNotifications(await api.acknowledgeNotification(n.id));
       setOpenTaskId(taskId);
+      setOpenOccurrenceDate(occurrenceDate);
       setView("calendar");
     });
   const filtered = data.notes
@@ -678,18 +701,16 @@ function Notebook() {
                         maxLength={1000}
                         disabled={busy}
                       />
-                      {editorMode === "preview" ? (
-                        <MarkdownNote text={draft.body} />
-                      ) : (
-                        <textarea
-                          className="body-input"
-                          aria-label="Текст заметки"
-                          placeholder="Начните писать. Здесь можно оставить мысль, план или записать её голосом…"
+                      {editorMode === "preview" && <MarkdownNote text={draft.body} />}
+                      <div className="markdown-edit-pane" hidden={editorMode !== "edit"}>
+                        <MarkdownEditor
+                          key={draft.id}
                           value={draft.body}
-                          onChange={(e) => edit({ body: e.target.value })}
+                          onChange={(body) => edit({ body })}
+                          onSave={() => void flush().catch(() => {})}
                           disabled={busy}
                         />
-                      )}
+                      </div>
                     </div>
                     <footer className="editor-footer">
                       <button
@@ -707,6 +728,7 @@ function Notebook() {
                       </button>
                       <button
                         className={`save-status ${status.includes("Ошибка") ? "danger" : ""}`}
+                        aria-label="Сохранить заметку"
                         onClick={() => void flush().catch(() => {})}
                       >
                         <Check size={14} />
@@ -741,6 +763,7 @@ function Notebook() {
             onOpenNote={openNote}
             onError={setError}
             openTaskId={openTaskId}
+            openOccurrenceDate={openOccurrenceDate}
             onTaskOpened={() => setOpenTaskId("")}
             onBusyChange={(value) => {
               busyRef.current = value;

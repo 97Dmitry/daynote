@@ -25,15 +25,17 @@ type Note struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 type Task struct {
-	ID          string     `json:"id"`
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	Start       string     `json:"start"`
-	End         string     `json:"end"`
-	Color       string     `json:"color"`
-	Done        bool       `json:"done"`
-	NoteIDs     []string   `json:"noteIds"`
-	Reminders   []Reminder `json:"reminders"`
+	ID          string          `json:"id"`
+	Title       string          `json:"title"`
+	Description string          `json:"description"`
+	Start       string          `json:"start"`
+	End         string          `json:"end"`
+	Color       string          `json:"color"`
+	Done        bool            `json:"done"`
+	NoteIDs     []string        `json:"noteIds"`
+	Reminders   []Reminder      `json:"reminders"`
+	Recurrence  *Recurrence     `json:"recurrence,omitempty"`
+	Exceptions  []TaskException `json:"exceptions,omitempty"`
 }
 type Reminder struct {
 	ID            string `json:"id"`
@@ -43,14 +45,15 @@ type Reminder struct {
 	Sound         bool   `json:"sound"`
 }
 type Notification struct {
-	ID        string `json:"id"`
-	TaskID    string `json:"taskId"`
-	TaskTitle string `json:"taskTitle"`
-	TaskStart string `json:"taskStart"`
-	DueAt     string `json:"dueAt"`
-	CreatedAt string `json:"createdAt"`
-	Sound     bool   `json:"sound"`
-	Read      bool   `json:"read"`
+	ID             string `json:"id"`
+	TaskID         string `json:"taskId"`
+	TaskTitle      string `json:"taskTitle"`
+	TaskStart      string `json:"taskStart"`
+	DueAt          string `json:"dueAt"`
+	CreatedAt      string `json:"createdAt"`
+	Sound          bool   `json:"sound"`
+	Read           bool   `json:"read"`
+	OccurrenceDate string `json:"occurrenceDate,omitempty"`
 }
 type Snapshot struct {
 	Version int     `json:"version"`
@@ -62,7 +65,7 @@ type Snapshot struct {
 var colorPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 func validate(s Snapshot) error {
-	if s.Version != 2 {
+	if s.Version != 3 {
 		return errors.New("неподдерживаемая версия данных")
 	}
 	topics, notes, tasks := map[string]bool{}, map[string]bool{}, map[string]bool{}
@@ -93,6 +96,9 @@ func validate(s Snapshot) error {
 		end, e2 := time.Parse(time.RFC3339, v.End)
 		if e1 != nil || e2 != nil || !end.After(start) {
 			return errors.New("конец задачи должен быть позже начала; укажите дату, время и часовой пояс")
+		}
+		if err := validateRecurrence(v); err != nil {
+			return err
 		}
 		if len(v.Reminders) > 64 {
 			return errors.New("у задачи может быть не больше 64 напоминаний")

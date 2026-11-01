@@ -25,13 +25,23 @@ export function Move(arg1:string,arg2:string,arg3:number,arg4:string):Promise<st
 
 export function Notifications():Promise<Array<store.Notification>>;
 
+export function Occurrence(arg1:string,arg2:string):Promise<store.Occurrence>;
+
+export function Occurrences(arg1:string,arg2:string):Promise<Array<store.Occurrence>>;
+
 export function RendererReady():Promise<void>;
 
+export function ResetException(arg1:string,arg2:string):Promise<void>;
+
 export function RestoreBackup():Promise<store.Snapshot>;
+
+export function SaveException(arg1:string,arg2:store.TaskException):Promise<void>;
 
 export function SaveNote(arg1:store.Note):Promise<store.Note>;
 
 export function SaveTask(arg1:store.Task):Promise<store.Task>;
+
+export function SaveTaskWithConfirmation(arg1:store.Task,arg2:boolean):Promise<store.Task>;
 
 export function SaveTopic(arg1:store.Topic):Promise<store.Topic>;
 
@@ -46,3 +56,5 @@ export function ShowWindow():Promise<void>;
 export function StartVoice(arg1:string):Promise<void>;
 
 export function StopVoice():Promise<void>;
+
+export function TaskChangeImpact(arg1:store.Task):Promise<number>;

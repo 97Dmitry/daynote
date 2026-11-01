@@ -46,12 +46,28 @@ export function Notifications() {
   return window['go']['main']['App']['Notifications']();
 }
 
+export function Occurrence(arg1, arg2) {
+  return window['go']['main']['App']['Occurrence'](arg1, arg2);
+}
+
+export function Occurrences(arg1, arg2) {
+  return window['go']['main']['App']['Occurrences'](arg1, arg2);
+}
+
 export function RendererReady() {
   return window['go']['main']['App']['RendererReady']();
 }
 
+export function ResetException(arg1, arg2) {
+  return window['go']['main']['App']['ResetException'](arg1, arg2);
+}
+
 export function RestoreBackup() {
   return window['go']['main']['App']['RestoreBackup']();
+}
+
+export function SaveException(arg1, arg2) {
+  return window['go']['main']['App']['SaveException'](arg1, arg2);
 }
 
 export function SaveNote(arg1) {
@@ -60,6 +76,10 @@ export function SaveNote(arg1) {
 
 export function SaveTask(arg1) {
   return window['go']['main']['App']['SaveTask'](arg1);
+}
+
+export function SaveTaskWithConfirmation(arg1, arg2) {
+  return window['go']['main']['App']['SaveTaskWithConfirmation'](arg1, arg2);
 }
 
 export function SaveTopic(arg1) {
@@ -88,4 +108,8 @@ export function StartVoice(arg1) {
 
 export function StopVoice() {
   return window['go']['main']['App']['StopVoice']();
+}
+
+export function TaskChangeImpact(arg1) {
+  return window['go']['main']['App']['TaskChangeImpact'](arg1);
 }

@@ -18,8 +18,19 @@ vi.mock("./api", () => ({
       bridge.settings.autostart = enabled;
     },
     load: async () => structuredClone(bridge.state),
+    occurrences: async () =>
+      bridge.state.tasks.map((t) => ({
+        id: t.id,
+        taskId: t.id,
+        date: "",
+        start: t.start,
+        end: t.end,
+        done: t.done,
+      })),
     saveTask: async (task: Task) => {
-      bridge.state.tasks = [{ ...structuredClone(task), id: task.id || "new" }];
+      const saved = { ...structuredClone(task), id: task.id || "new" };
+      bridge.state.tasks = [saved];
+      return saved;
     },
     on: () => () => {},
   },

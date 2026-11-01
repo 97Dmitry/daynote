@@ -11,5 +11,7 @@
 - Theme is a Go preference (system/light/dark) persisted together with backupFolder. Renderer localStorage caches only this UI preference for first paint, never notes. Keep generated Wails files excluded from Vite+ format/lint.
 
 - Background lifecycle: X/Alt+F4 requests a renderer save handshake, then hides; only tray Quit requests exit. Preserve modal drafts on hide and show the window on persistence/native-tray failure. Keep taskbar/Alt+Tab styles intact. See `docs/superpowers/specs/2026-11-02-background-reminders-design.md`.
-- Reminder receipts are persisted before shell delivery. Schema/backup v2 accepts v1 JSON; imports atomically clear runtime notification receipts. Catch-up is a rolling 24-hour window; never add raw receipt history to backups.
+- Reminder receipts are persisted before shell delivery. Schema/backup v3 accepts v1/v2 JSON; imports atomically clear runtime notification receipts. Catch-up is a rolling 24-hour window; never add raw receipt history to backups.
 - Autostart writes only the current user's Daynote Run value on an explicit settings action. Do not mutate a real user's registry from agent checks. Releases publish the exact CI artifact after both jobs pass; verify remote publication and checksums before reporting a release.
+
+- Recurrence is evaluated only in Go for both calendar ranges and reminders. Series keep an IANA timezone with embedded tzdata; exception keys are original dates even after moves. Completion is per occurrence. Series edits preserve current exceptions, and removing invalidated exceptions requires confirmation. See `docs/superpowers/specs/2026-11-02-recurring-tasks-design.md`.

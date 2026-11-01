@@ -32,7 +32,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db, state: Snapshot{Version: 2, Topics: []Topic{}, Notes: []Note{}, Tasks: []Task{}}}
+	s := &Store{db: db, state: Snapshot{Version: 3, Topics: []Topic{}, Notes: []Note{}, Tasks: []Task{}}}
 	fail := func(e error) (*Store, error) { _ = db.Close(); return nil, e }
 	if _, err = db.Exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;"); err != nil {
 		return fail(err)
@@ -41,7 +41,7 @@ func Open(path string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version != 0 && version != 1 && version != 2 {
+	if version < 0 || version > 3 {
 		return fail(errors.New("неподдерживаемая версия базы; данные не изменены"))
 	}
 	if version == 0 {
@@ -63,6 +63,7 @@ func Open(path string) (*Store, error) {
 		if err != nil {
 			return fail(err)
 		}
+		version = 2
 	}
 	for _, table := range []string{"topics", "notes", "tasks"} {
 		rows, e := db.Query("SELECT data FROM " + table)
@@ -103,6 +104,13 @@ func Open(path string) (*Store, error) {
 	if err = validate(s.state); err != nil {
 		return fail(err)
 	}
+	// v3 adds optional JSON task fields. Bump only after the old graph is valid;
+	// receipts and task payloads do not need rewriting.
+	if version == 2 {
+		if _, err = db.Exec("PRAGMA user_version=3"); err != nil {
+			return fail(err)
+		}
+	}
 	s.sort()
 	return s, nil
 }
@@ -112,14 +120,7 @@ func clone(v Snapshot) Snapshot {
 	v.Notes = slices.Clone(v.Notes)
 	v.Tasks = slices.Clone(v.Tasks)
 	for i := range v.Tasks {
-		v.Tasks[i].NoteIDs = slices.Clone(v.Tasks[i].NoteIDs)
-		if v.Tasks[i].NoteIDs == nil {
-			v.Tasks[i].NoteIDs = []string{}
-		}
-		v.Tasks[i].Reminders = slices.Clone(v.Tasks[i].Reminders)
-		if v.Tasks[i].Reminders == nil {
-			v.Tasks[i].Reminders = []Reminder{}
-		}
+		v.Tasks[i] = cloneTask(v.Tasks[i])
 	}
 	return v
 }
@@ -284,11 +285,10 @@ func (s *Store) SaveTopic(t Topic) (Topic, error) {
 	return t, err
 }
 func (s *Store) SaveTask(t Task) (Task, error) {
-	t.Reminders = slices.Clone(t.Reminders)
-	t.NoteIDs = slices.Clone(t.NoteIDs)
-	if t.Reminders == nil {
-		t.Reminders = []Reminder{}
-	}
+	return s.SaveTaskWithConfirmation(t, false)
+}
+func (s *Store) SaveTaskWithConfirmation(t Task, discardExceptions bool) (Task, error) {
+	t = cloneTask(t)
 	err := s.change(func(v *Snapshot) error {
 		t.Title = strings.TrimSpace(t.Title)
 		if t.Color == "" {
@@ -304,15 +304,26 @@ func (s *Store) SaveTask(t Task) (Task, error) {
 		}
 		for i, p := range v.Tasks {
 			if p.ID == t.ID {
+				// Series edits must not overwrite exceptions from a stale renderer.
+				t.Exceptions = slices.Clone(p.Exceptions)
+				if p.Recurrence != nil && t.Recurrence == nil && !discardExceptions {
+					return errors.New("подтвердите отключение повторения и сброс исключений")
+				}
+				kept, count, err := retainedExceptions(t)
+				if err != nil {
+					return err
+				}
+				if count > 0 && !discardExceptions {
+					return errors.New("подтвердите удаление исключений, не входящих в новое расписание")
+				}
+				t.Exceptions = kept
 				v.Tasks[i] = t
 				return nil
 			}
 		}
 		return errors.New("задача не найдена")
 	})
-	t.Reminders = slices.Clone(t.Reminders)
-	t.NoteIDs = slices.Clone(t.NoteIDs)
-	return t, err
+	return cloneTask(t), err
 }
 func (s *Store) Delete(kind, id string) error {
 	return s.change(func(v *Snapshot) error {

@@ -25,36 +25,35 @@ func (s *Store) ClaimDue(now time.Time) ([]Notification, error) {
 		if t.Done {
 			continue
 		}
-		start, err := time.Parse(time.RFC3339, t.Start)
-		if err != nil {
-			return nil, err
-		}
 		for _, r := range t.Reminders {
-			due, err := r.Due(start)
+			instances, err := reminderOccurrences(t, r, cutoff, now)
 			if err != nil {
 				return nil, err
 			}
-			due = due.UTC()
-			if due.After(now) || due.Before(cutoff) {
-				continue
-			}
-			date := due.Format(time.RFC3339Nano)
-			sum := sha256.Sum256([]byte(t.ID + "\x00" + r.ID + "\x00" + date))
-			n := Notification{ID: hex.EncodeToString(sum[:]), TaskID: t.ID, TaskTitle: t.Title, TaskStart: t.Start, DueAt: date, CreatedAt: now.Format(time.RFC3339Nano), Sound: r.Sound}
-			b, err := json.Marshal(n)
-			if err != nil {
-				return nil, err
-			}
-			result, err := tx.Exec("INSERT INTO notification_receipts(id,task_id,payload) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING", n.ID, n.TaskID, b)
-			if err != nil {
-				return nil, err
-			}
-			rows, err := result.RowsAffected()
-			if err != nil {
-				return nil, err
-			}
-			if rows == 1 {
-				out = append(out, n)
+			for _, instance := range instances {
+				due := instance.due.UTC()
+				date := due.Format(time.RFC3339Nano)
+				key := t.ID + "\x00" + r.ID + "\x00" + date
+				if instance.occurrence.Date != "" {
+					key = t.ID + "\x00" + instance.occurrence.Date + "\x00" + r.ID + "\x00" + date
+				}
+				sum := sha256.Sum256([]byte(key))
+				n := Notification{ID: hex.EncodeToString(sum[:]), TaskID: t.ID, OccurrenceDate: instance.occurrence.Date, TaskTitle: t.Title, TaskStart: instance.occurrence.Start, DueAt: date, CreatedAt: now.Format(time.RFC3339Nano), Sound: r.Sound}
+				b, err := json.Marshal(n)
+				if err != nil {
+					return nil, err
+				}
+				result, err := tx.Exec("INSERT INTO notification_receipts(id,task_id,payload) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING", n.ID, n.TaskID, b)
+				if err != nil {
+					return nil, err
+				}
+				rows, err := result.RowsAffected()
+				if err != nil {
+					return nil, err
+				}
+				if rows == 1 {
+					out = append(out, n)
+				}
 			}
 		}
 	}

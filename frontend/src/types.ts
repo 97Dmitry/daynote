@@ -31,6 +31,23 @@ export type NotificationItem = {
   createdAt: string;
   sound: boolean;
   read: boolean;
+  occurrenceDate?: string;
+};
+export type Recurrence = { weekdays: number[]; timeZone: string; until: string };
+export type TaskException = {
+  date: string;
+  done: boolean;
+  skipped: boolean;
+  start: string;
+  end: string;
+};
+export type Occurrence = {
+  id: string;
+  taskId: string;
+  date: string;
+  start: string;
+  end: string;
+  done: boolean;
 };
 export type Task = {
   id: string;
@@ -42,6 +59,8 @@ export type Task = {
   done: boolean;
   noteIds: string[];
   reminders: Reminder[];
+  recurrence?: Recurrence;
+  exceptions?: TaskException[];
 };
 export type Snapshot = {
   version: number;
