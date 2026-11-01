@@ -37,6 +37,7 @@ export type Settings = {
   lastBackup: string;
   backupError: string;
   dataFolder: string;
+  theme: string;
 };
 export type VoiceEvent = {
   sessionId: string;
@@ -62,5 +63,4 @@ export const emptyNote = (topicId = "", date = today()): Note => ({
 });
 export const noteSignature = (n: Note) =>
   JSON.stringify([n.id, n.title, n.body, n.date, n.topicId, n.pinned]);
-export const errorText = (e: unknown) =>
-  e instanceof Error ? e.message : String(e);
+export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));

@@ -36,7 +36,7 @@ while raw.strip():
     if not module.get("Main") and module.get("Dir"):
         collect(module["Path"], module["Version"], module["Dir"])
 
-tree = json.loads(subprocess.check_output(["pnpm", "list", "--prod", "--json", "--depth", "Infinity"], cwd=ROOT / "frontend", text=True))
+tree = json.loads(subprocess.check_output(["vp", "exec", "pnpm", "list", "--prod", "--json", "--depth", "Infinity"], cwd=ROOT / "frontend", text=True))
 seen = set()
 
 

@@ -29,6 +29,8 @@ export function SaveTopic(arg1:store.Topic):Promise<store.Topic>;
 
 export function SetGeminiKey(arg1:string):Promise<void>;
 
+export function SetTheme(arg1:string):Promise<void>;
+
 export function StartVoice(arg1:string):Promise<void>;
 
 export function StopVoice():Promise<void>;

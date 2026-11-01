@@ -27,9 +27,11 @@ type Settings struct {
 	LastBackup    string `json:"lastBackup"`
 	BackupError   string `json:"backupError"`
 	DataFolder    string `json:"dataFolder"`
+	Theme         string `json:"theme"`
 }
 type config struct {
 	BackupFolder string `json:"backupFolder"`
+	Theme        string `json:"theme"`
 }
 type App struct {
 	data           *store.Store
@@ -44,6 +46,7 @@ type App struct {
 	done           chan struct{}
 	allowClose     atomic.Bool
 	restoreMu      sync.Mutex
+	preferencesMu  sync.Mutex
 	pickRestore    func() (string, error)
 	confirmRestore func(wruntime.MessageDialogOptions) (string, error)
 }
@@ -54,7 +57,7 @@ func newApp(dir string, keys secrets.Store) (*App, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &App{data: data, secrets: keys, dir: dir, dirty: make(chan struct{}, 1), cancel: cancel, done: make(chan struct{}), settings: Settings{DataFolder: dir}}
+	a := &App{data: data, secrets: keys, dir: dir, dirty: make(chan struct{}, 1), cancel: cancel, done: make(chan struct{}), settings: Settings{DataFolder: dir, Theme: "system"}}
 	a.pickRestore = func() (string, error) {
 		return wruntime.OpenFileDialog(a.ctx, wruntime.OpenDialogOptions{Title: "Восстановить резервную копию Daynote", Filters: []wruntime.FileFilter{{DisplayName: "Daynote JSON", Pattern: "*.json"}}})
 	}
@@ -70,6 +73,9 @@ func newApp(dir string, keys secrets.Store) (*App, error) {
 			return nil, errors.New("не удалось прочитать settings.json; файл не изменён")
 		}
 		a.settings.BackupFolder = cfg.BackupFolder
+		if validTheme(cfg.Theme) {
+			a.settings.Theme = cfg.Theme
+		}
 	} else if !os.IsNotExist(err) {
 		_ = data.Close()
 		cancel()
@@ -176,7 +182,26 @@ func (a *App) ChooseBackupFolder() (Settings, error) {
 	return a.GetSettings()
 }
 func (a *App) setBackupFolder(dir string) error {
-	b, _ := json.MarshalIndent(config{BackupFolder: dir}, "", "  ")
+	return a.updatePreferences(func(cfg *config) { cfg.BackupFolder = dir })
+}
+func validTheme(theme string) bool { return theme == "system" || theme == "light" || theme == "dark" }
+func (a *App) SetTheme(theme string) error {
+	if !validTheme(theme) {
+		return errors.New("неизвестная тема оформления")
+	}
+	if err := a.updatePreferences(func(cfg *config) { cfg.Theme = theme }); err != nil {
+		return err
+	}
+	return nil
+}
+func (a *App) updatePreferences(update func(*config)) error {
+	a.preferencesMu.Lock()
+	defer a.preferencesMu.Unlock()
+	a.mu.Lock()
+	cfg := config{BackupFolder: a.settings.BackupFolder, Theme: a.settings.Theme}
+	a.mu.Unlock()
+	update(&cfg)
+	b, _ := json.MarshalIndent(cfg, "", "  ")
 	path := filepath.Join(a.dir, "settings.json")
 	tmp, err := os.CreateTemp(a.dir, ".settings-*")
 	if err != nil {
@@ -187,6 +212,10 @@ func (a *App) setBackupFolder(dir string) error {
 		_ = tmp.Close()
 		return err
 	}
+	if err = tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
 	if err = tmp.Close(); err != nil {
 		return err
 	}
@@ -194,7 +223,8 @@ func (a *App) setBackupFolder(dir string) error {
 		return err
 	}
 	a.mu.Lock()
-	a.settings.BackupFolder = dir
+	a.settings.BackupFolder = cfg.BackupFolder
+	a.settings.Theme = cfg.Theme
 	a.mu.Unlock()
 	return nil
 }

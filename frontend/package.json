@@ -1,23 +1,26 @@
 {
   "name": "daynote-frontend",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.14.0",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "vp dev",
+    "build": "tsc -b && vp build",
     "typecheck": "tsc -b",
-    "test": "vitest run",
-    "preview": "vite preview",
+    "test": "vp test run",
+    "preview": "vp preview",
     "test:browser": "playwright test"
   },
   "dependencies": {
     "@fullcalendar/react": "^7.1.3",
+    "@radix-ui/react-context-menu": "^2.4.1",
     "@radix-ui/react-dialog": "^1.3.1",
+    "@radix-ui/react-dropdown-menu": "^2.2.1",
     "lucide-react": "^1.66.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "temporal-polyfill": "^1.0.6"
   },
   "devDependencies": {
@@ -30,9 +33,10 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "jsdom": "^30.1.3",
-    "prettier": "^3.9.10",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5",
-    "vitest": "^5.0.5"
-  }
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
+  },
+  "packageManager": "pnpm@12.14.0"
 }

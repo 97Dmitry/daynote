@@ -4,7 +4,6 @@ import {
   ArrowUp,
   CalendarDays,
   Check,
-  ChevronRight,
   Folder,
   FolderPlus,
   Mic,
@@ -16,21 +15,25 @@ import {
   Trash2,
 } from "lucide-react";
 import { api } from "./api";
-import {
-  emptyNote,
-  errorText,
-  noteSignature,
-  type Note,
-  type Snapshot,
-  type Topic,
-} from "./types";
+import { emptyNote, errorText, noteSignature, type Note, type Snapshot, type Topic } from "./types";
 import { CalendarView } from "./Calendar";
 import { SettingsView } from "./Settings";
 import { Voice } from "./Voice";
 import { Dialog } from "./Dialog";
+import { ThemeProvider, ThemeSelect } from "./Theme";
+import { ContextActions, ActionButton, type MenuAction } from "./ActionMenu";
+import { MarkdownNote } from "./MarkdownNote";
 
 const empty: Snapshot = { version: 1, topics: [], notes: [], tasks: [] };
 export function App() {
+  return (
+    <ThemeProvider>
+      <Notebook />
+    </ThemeProvider>
+  );
+}
+function Notebook() {
+  const [editorMode, setEditorMode] = useState("edit");
   const [data, setData] = useState<Snapshot>(empty),
     [loaded, setLoaded] = useState(false),
     [view, setView] = useState("notes"),
@@ -82,10 +85,7 @@ export function App() {
     const job = queue.current
       .catch(() => {})
       .then(async () => {
-        while (
-          current.current &&
-          noteSignature(current.current) !== saved.current
-        ) {
+        while (current.current && noteSignature(current.current) !== saved.current) {
           const n = { ...current.current },
             signature = noteSignature(n);
           setStatus("Сохранение…");
@@ -96,10 +96,7 @@ export function App() {
               notes: prev.notes.map((x) => (x.id === result.id ? result : x)),
             }));
             saved.current = signature;
-            if (
-              current.current?.id === n.id &&
-              noteSignature(current.current) === signature
-            ) {
+            if (current.current?.id === n.id && noteSignature(current.current) === signature) {
               current.current = result;
               saved.current = noteSignature(result);
               setDraft(result);
@@ -189,8 +186,7 @@ export function App() {
       setScope(id);
       setQuery("");
       const fresh = await refresh();
-      const next =
-        fresh.notes.find((n) => id === "*" || n.topicId === id) || null;
+      const next = fresh.notes.find((n) => id === "*" || n.topicId === id) || null;
       select(next);
       setView("notes");
     });
@@ -205,18 +201,14 @@ export function App() {
     void run(async () => {
       setData(await api.move(kind, id, delta, scope));
     });
-  const removeNote = () =>
+  const removeNote = (targetId?: string) =>
     void run(async () => {
-      if (
-        !current.current ||
-        !window.confirm("Удалить заметку и её связи с задачами?")
-      )
-        return;
-      const next = await api.remove("note", current.current.id);
+      const deletingId = targetId || current.current?.id;
+      if (!deletingId || !window.confirm("Удалить заметку и её связи с задачами?")) return;
+      const next = await api.remove("note", deletingId);
       setData(next);
-      select(
-        next.notes.find((n) => scope === "*" || n.topicId === scope) || null,
-      );
+      if (current.current?.id === deletingId)
+        select(next.notes.find((n) => scope === "*" || n.topicId === scope) || null);
     });
   const saveTopic = (topic: Topic) =>
     void run(async () => {
@@ -226,25 +218,57 @@ export function App() {
     });
   const deleteTopic = () =>
     void run(async () => {
-      if (
-        !topicDialog?.id ||
-        !window.confirm("Удалить тему? Её заметки останутся без темы.")
-      )
+      if (!topicDialog?.id || !window.confirm("Удалить тему? Её заметки останутся без темы."))
         return;
       const next = await api.remove("topic", topicDialog.id);
       setData(next);
       if (scope === topicDialog.id) setScope("");
-      if (current.current)
-        select(next.notes.find((n) => n.id === current.current?.id) || null);
+      if (current.current) select(next.notes.find((n) => n.id === current.current?.id) || null);
       setTopicDialog(null);
     });
+  const removeTopicDirect = (t: Topic) =>
+    void run(async () => {
+      if (!window.confirm(`Удалить тему «${t.name}»? Заметки останутся без темы.`)) return;
+      const next = await api.remove("topic", t.id);
+      setData(next);
+      if (scope === t.id) setScope("");
+      if (current.current) select(next.notes.find((n) => n.id === current.current?.id) || null);
+    });
+  const topicActions = (t: Topic): MenuAction[] => [
+    {
+      label: "Переименовать тему",
+      onSelect: () => setTopicDialog(t),
+      disabled: busy,
+      opensDialog: true,
+    },
+    { label: "Переместить выше", onSelect: () => move("topic", t.id, -1), disabled: busy },
+    { label: "Переместить ниже", onSelect: () => move("topic", t.id, 1), disabled: busy },
+    { label: "Удалить тему", onSelect: () => removeTopicDirect(t), disabled: busy, danger: true },
+  ];
+  const noteActions = (n: Note): MenuAction[] => [
+    { label: "Открыть заметку", onSelect: () => openNote(n), disabled: busy },
+    {
+      label: n.pinned ? "Открепить заметку" : "Закрепить заметку",
+      onSelect: () => pin(n),
+      disabled: busy,
+    },
+    {
+      label: "Переместить выше",
+      onSelect: () => move("note", n.id, -1),
+      disabled: busy || sort !== "manual" || !!query,
+    },
+    {
+      label: "Переместить ниже",
+      onSelect: () => move("note", n.id, 1),
+      disabled: busy || sort !== "manual" || !!query,
+    },
+    { label: "Удалить заметку", onSelect: () => removeNote(n.id), disabled: busy, danger: true },
+  ];
   const filtered = data.notes
     .filter(
       (n) =>
         (scope === "*" || n.topicId === scope) &&
-        `${n.title}\n${n.body}`
-          .toLocaleLowerCase()
-          .includes(query.toLocaleLowerCase()),
+        `${n.title}\n${n.body}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
     )
     .sort(
       (a, b) =>
@@ -259,11 +283,7 @@ export function App() {
     );
   const topic = data.topics.find((t) => t.id === scope),
     scopeName =
-      scope === "*"
-        ? "Все заметки"
-        : scope === ""
-          ? "Без темы"
-          : topic?.name || "Заметки";
+      scope === "*" ? "Все заметки" : scope === "" ? "Без темы" : topic?.name || "Заметки";
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -328,53 +348,29 @@ export function App() {
             Без темы
           </button>
           {data.topics.map((t) => (
-            <div key={t.id} className="topic-row">
-              <button
-                className={`topic-choice ${scope === t.id && view === "notes" ? "selected" : ""}`}
-                onClick={() => chooseScope(t.id)}
-                disabled={busy}
-              >
-                <span className="topic-dot" style={{ background: t.color }} />
-                <span className="truncate">{t.name}</span>
-              </button>
-              <div className="topic-actions">
+            <ContextActions key={t.id} items={topicActions(t)}>
+              <div className="topic-row">
                 <button
-                  className="icon-button small"
-                  aria-label={`Тема ${t.name} выше`}
-                  onClick={() => move("topic", t.id, -1)}
+                  className={`topic-choice ${scope === t.id && view === "notes" ? "selected" : ""}`}
+                  onClick={() => chooseScope(t.id)}
                   disabled={busy}
                 >
-                  <ArrowUp size={13} />
+                  <span className="topic-dot" style={{ background: t.color }} />
+                  <span className="truncate">{t.name}</span>
                 </button>
-                <button
-                  className="icon-button small"
-                  aria-label={`Тема ${t.name} ниже`}
-                  onClick={() => move("topic", t.id, 1)}
-                  disabled={busy}
-                >
-                  <ArrowDown size={13} />
-                </button>
-                <button
-                  className="icon-button small"
-                  aria-label={`Изменить тему ${t.name}`}
-                  onClick={() => setTopicDialog(t)}
-                  disabled={busy}
-                >
-                  <ChevronRight size={14} />
-                </button>
+                <ActionButton items={topicActions(t)} label={`Действия темы ${t.name}`} />
               </div>
-            </div>
+            </ContextActions>
           ))}
         </div>
         <div className="sidebar-bottom">
+          <ThemeSelect />
           <div className="local-indicator">
             <span />
             Данные на этом компьютере
           </div>
           <button
-            className={
-              view === "settings" ? "settings-link active" : "settings-link"
-            }
+            className={view === "settings" ? "settings-link active" : "settings-link"}
             onClick={() => navigate("settings")}
             disabled={busy}
           >
@@ -413,11 +409,7 @@ export function App() {
                     : `${filtered.length} ${filtered.length === 1 ? "запись" : "записей"} в вашем пространстве`}
                 </p>
               </div>
-              <button
-                className="primary-button"
-                onClick={newNote}
-                disabled={busy}
-              >
+              <button className="primary-button" onClick={newNote} disabled={busy}>
                 <Plus size={18} />
                 Новая заметка
               </button>
@@ -446,86 +438,80 @@ export function App() {
                 </div>
                 <div className="note-list">
                   {filtered.map((n, i) => (
-                    <div
-                      key={n.id}
-                      className={`note-item ${draft?.id === n.id ? "selected" : ""}`}
-                    >
-                      {n.pinned && (i === 0 || !filtered[i - 1].pinned) && (
-                        <div className="pin-label">
-                          <Pin size={12} />
-                          Закреплено
-                        </div>
-                      )}
-                      <button
-                        className="note-open"
-                        aria-label={`Открыть заметку ${n.title || "Без названия"}`}
-                        disabled={busy}
-                        onClick={() => openNote(n)}
+                    <ContextActions key={n.id} items={noteActions(n)}>
+                      <div
+                        key={n.id}
+                        className={`note-item ${draft?.id === n.id ? "selected" : ""}`}
                       >
-                        <div className="note-title">
-                          {n.title || "Без названия"}
-                        </div>
-                        <p>
-                          {n.body.replace(/\s+/g, " ").slice(0, 105) ||
-                            "Пока без текста"}
-                        </p>
-                        <div className="note-meta">
-                          <time>
-                            {new Date(`${n.date}T12:00:00`).toLocaleDateString(
-                              "ru-RU",
-                              { day: "numeric", month: "short" },
+                        {n.pinned && (i === 0 || !filtered[i - 1].pinned) && (
+                          <div className="pin-label">
+                            <Pin size={12} />
+                            Закреплено
+                          </div>
+                        )}
+                        <button
+                          className="note-open"
+                          aria-label={`Открыть заметку ${n.title || "Без названия"}`}
+                          disabled={busy}
+                          onClick={() => openNote(n)}
+                        >
+                          <div className="note-title">{n.title || "Без названия"}</div>
+                          <p>{n.body.replace(/\s+/g, " ").slice(0, 105) || "Пока без текста"}</p>
+                          <div className="note-meta">
+                            <time>
+                              {new Date(`${n.date}T12:00:00`).toLocaleDateString("ru-RU", {
+                                day: "numeric",
+                                month: "short",
+                              })}
+                            </time>
+                            {n.topicId && (
+                              <span>
+                                <i
+                                  style={{
+                                    background: data.topics.find((t) => t.id === n.topicId)?.color,
+                                  }}
+                                />
+                                {data.topics.find((t) => t.id === n.topicId)?.name}
+                              </span>
                             )}
-                          </time>
-                          {n.topicId && (
-                            <span>
-                              <i
-                                style={{
-                                  background: data.topics.find(
-                                    (t) => t.id === n.topicId,
-                                  )?.color,
-                                }}
-                              />
-                              {
-                                data.topics.find((t) => t.id === n.topicId)
-                                  ?.name
-                              }
-                            </span>
+                          </div>
+                        </button>
+                        <div className="note-row-actions">
+                          <ActionButton
+                            items={noteActions(n)}
+                            label={`Действия заметки ${n.title || "Без названия"}`}
+                          />
+                          <button
+                            className={`icon-button small ${n.pinned ? "pinned" : ""}`}
+                            aria-label={n.pinned ? "Открепить заметку" : "Закрепить заметку"}
+                            onClick={() => pin(n)}
+                            disabled={busy}
+                          >
+                            <Pin size={14} />
+                          </button>
+                          {sort === "manual" && !query && (
+                            <>
+                              <button
+                                className="icon-button small"
+                                aria-label="Заметка выше"
+                                onClick={() => move("note", n.id, -1)}
+                                disabled={busy}
+                              >
+                                <ArrowUp size={14} />
+                              </button>
+                              <button
+                                className="icon-button small"
+                                aria-label="Заметка ниже"
+                                onClick={() => move("note", n.id, 1)}
+                                disabled={busy}
+                              >
+                                <ArrowDown size={14} />
+                              </button>
+                            </>
                           )}
                         </div>
-                      </button>
-                      <div className="note-row-actions">
-                        <button
-                          className={`icon-button small ${n.pinned ? "pinned" : ""}`}
-                          aria-label={
-                            n.pinned ? "Открепить заметку" : "Закрепить заметку"
-                          }
-                          onClick={() => pin(n)}
-                          disabled={busy}
-                        >
-                          <Pin size={14} />
-                        </button>
-                        {sort === "manual" && !query && (
-                          <>
-                            <button
-                              className="icon-button small"
-                              aria-label="Заметка выше"
-                              onClick={() => move("note", n.id, -1)}
-                              disabled={busy}
-                            >
-                              <ArrowUp size={14} />
-                            </button>
-                            <button
-                              className="icon-button small"
-                              aria-label="Заметка ниже"
-                              onClick={() => move("note", n.id, 1)}
-                              disabled={busy}
-                            >
-                              <ArrowDown size={14} />
-                            </button>
-                          </>
-                        )}
                       </div>
-                    </div>
+                    </ContextActions>
                   ))}
                   {filtered.length === 0 && (
                     <div className="list-empty">
@@ -572,9 +558,7 @@ export function App() {
                         <button
                           className={`icon-button ${draft.pinned ? "pinned" : ""}`}
                           aria-label={
-                            draft.pinned
-                              ? "Открепить текущую заметку"
-                              : "Закрепить текущую заметку"
+                            draft.pinned ? "Открепить текущую заметку" : "Закрепить текущую заметку"
                           }
                           onClick={() => edit({ pinned: !draft.pinned })}
                           disabled={busy}
@@ -584,12 +568,27 @@ export function App() {
                         <button
                           className="icon-button danger"
                           aria-label="Удалить заметку"
-                          onClick={removeNote}
+                          onClick={() => removeNote()}
                           disabled={busy}
                         >
                           <Trash2 size={18} />
                         </button>
                       </div>
+                    </div>
+                    <div className="editor-tabs" role="group" aria-label="Режим заметки">
+                      <button
+                        aria-pressed={editorMode === "edit"}
+                        onClick={() => setEditorMode("edit")}
+                      >
+                        Редактор
+                      </button>
+                      <button
+                        aria-pressed={editorMode === "preview"}
+                        onClick={() => setEditorMode("preview")}
+                      >
+                        Просмотр
+                      </button>
+                      <span>Markdown</span>
                     </div>
                     <div className="editor-document">
                       <input
@@ -601,14 +600,18 @@ export function App() {
                         maxLength={1000}
                         disabled={busy}
                       />
-                      <textarea
-                        className="body-input"
-                        aria-label="Текст заметки"
-                        placeholder="Начните писать. Здесь можно оставить мысль, план или записать её голосом…"
-                        value={draft.body}
-                        onChange={(e) => edit({ body: e.target.value })}
-                        disabled={busy}
-                      />
+                      {editorMode === "preview" ? (
+                        <MarkdownNote text={draft.body} />
+                      ) : (
+                        <textarea
+                          className="body-input"
+                          aria-label="Текст заметки"
+                          placeholder="Начните писать. Здесь можно оставить мысль, план или записать её голосом…"
+                          value={draft.body}
+                          onChange={(e) => edit({ body: e.target.value })}
+                          disabled={busy}
+                        />
+                      )}
                     </div>
                     <footer className="editor-footer">
                       <button
@@ -631,9 +634,7 @@ export function App() {
                         <Check size={14} />
                         {status}
                       </button>
-                      <span className="char-count">
-                        {draft.body.length} символов
-                      </span>
+                      <span className="char-count">{draft.body.length} символов</span>
                     </footer>
                   </>
                 ) : (
@@ -646,11 +647,7 @@ export function App() {
                       Создайте заметку, выберите тему
                       <br />и возвращайтесь к ней, когда нужно.
                     </p>
-                    <button
-                      className="primary-button"
-                      onClick={newNote}
-                      disabled={busy}
-                    >
+                    <button className="primary-button" onClick={newNote} disabled={busy}>
                       <Plus size={17} />
                       Создать заметку
                     </button>
@@ -770,20 +767,11 @@ function TopicDialog({
         </label>
         <div className="dialog-footer">
           {topic.id && (
-            <button
-              type="button"
-              className="text-button danger"
-              onClick={onDelete}
-              disabled={busy}
-            >
+            <button type="button" className="text-button danger" onClick={onDelete} disabled={busy}>
               Удалить тему
             </button>
           )}
-          <button
-            className="primary-button"
-            type="submit"
-            disabled={busy || !name.trim()}
-          >
+          <button className="primary-button" type="submit" disabled={busy || !name.trim()}>
             Сохранить тему
           </button>
         </div>

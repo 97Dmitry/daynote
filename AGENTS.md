@@ -6,4 +6,6 @@
 - Gemini keys use the Daynote prefix in Windows Credential Manager. Never return keys to the renderer or include them in snapshots/logs. No raw audio persistence. No real provider requests in tests.
 - Solveo is a read-only source for the narrow audio/STT/secret implementation; do not modify it or copy user data.
 - Generate Wails bindings through `make bindings`, never by hand. Run `make check` before claiming a build works; Windows runtime/microphone acceptance is separate.
-- Public source repository: do not commit build outputs, databases, backups, secrets, local settings or dependencies. Use pnpm and preserve its lockfile.
+- Public source repository: do not commit build outputs, databases, backups, secrets, local settings or dependencies. Use Vite+ (`vp`) with pnpm and preserve frontend/pnpm-lock.yaml and pnpm-workspace.yaml.
+
+- Theme is a Go preference (system/light/dark) persisted together with backupFolder. Renderer localStorage caches only this UI preference for first paint, never notes. Keep generated Wails files excluded from Vite+ format/lint.

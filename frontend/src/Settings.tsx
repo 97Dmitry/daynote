@@ -1,12 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Cloud,
-  FolderOpen,
-  KeyRound,
-  ShieldCheck,
-  Download,
-  RotateCcw,
-} from "lucide-react";
+import { Cloud, FolderOpen, KeyRound, ShieldCheck, Download, RotateCcw } from "lucide-react";
 import { api } from "./api";
 import { errorText, type Settings, type Snapshot } from "./types";
 export function SettingsView({
@@ -124,9 +117,8 @@ export function SettingsView({
           </div>
         </form>
         <p className="muted">
-          Ключ не попадает в заметки и резервные копии. Интернет и доступ к
-          модели Gemini Transcribe Live нужны только для голосового ввода.
-          Записывается микрофон Windows по умолчанию.
+          Ключ не попадает в заметки и резервные копии. Интернет и доступ к модели Gemini Transcribe
+          Live нужны только для голосового ввода. Записывается микрофон Windows по умолчанию.
         </p>
       </section>
       <section className="settings-section">
@@ -139,9 +131,7 @@ export function SettingsView({
         </div>
         <label>
           Папка резервных копий
-          <div className="folder-path">
-            {settings?.backupFolder || "Папка пока не выбрана"}
-          </div>
+          <div className="folder-path">{settings?.backupFolder || "Папка пока не выбрана"}</div>
         </label>
         <div className="settings-actions">
           <button
@@ -172,8 +162,7 @@ export function SettingsView({
         </div>
         {settings?.lastBackup && (
           <p className="configured">
-            Последняя копия:{" "}
-            {new Date(settings.lastBackup).toLocaleString("ru-RU")}
+            Последняя копия: {new Date(settings.lastBackup).toLocaleString("ru-RU")}
           </p>
         )}
         {settings?.backupError && (
@@ -182,10 +171,9 @@ export function SettingsView({
           </p>
         )}
         <p className="muted">
-          После изменений Daynote автоматически сохраняет отдельную JSON-копию.
-          Выберите папку внутри OneDrive, чтобы её загрузил клиент OneDrive.
-          Состояние облачной загрузки проверяется в самом OneDrive. Старые копии
-          не удаляются автоматически.
+          После изменений Daynote автоматически сохраняет отдельную JSON-копию. Выберите папку
+          внутри OneDrive, чтобы её загрузил клиент OneDrive. Состояние облачной загрузки
+          проверяется в самом OneDrive. Старые копии не удаляются автоматически.
         </p>
       </section>
       <section className="settings-section">
@@ -209,16 +197,16 @@ export function SettingsView({
           Открыть резервную копию
         </button>
         <p className="muted">
-          Перед заменой приложение проверит файл, запросит подтверждение и
-          сохранит текущие записи в локальную папку recovery.
+          Перед заменой приложение проверит файл, запросит подтверждение и сохранит текущие записи в
+          локальную папку recovery.
         </p>
         <label>
           Данные приложения
           <div className="folder-path">{settings?.dataFolder || "…"}</div>
         </label>
         <p className="muted">
-          Первая версия работает локально. Резервные копии не являются
-          синхронизацией между компьютерами.
+          Первая версия работает локально. Резервные копии не являются синхронизацией между
+          компьютерами.
         </p>
       </section>
     </div>

@@ -1,8 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("desktop renderer: edit, switch, calendar and linked note", async ({
-  page,
-}) => {
+test("desktop renderer: edit, switch, calendar and linked note", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     const day = new Date();
     const date = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
@@ -38,6 +36,14 @@ test("desktop renderer: edit, switch, calendar and linked note", async ({
       tasks: [] as any[],
     };
     const listeners = new Map();
+    const preferences = () => ({
+      backupFolder: "",
+      keyConfigured: false,
+      lastBackup: "",
+      backupError: "",
+      dataFolder: "C:/Users/test/AppData/Local/Daynote",
+      theme: localStorage.getItem("daynote.theme") || "system",
+    });
     const app = {
       Load: async () => structuredClone(state),
       SaveNote: async (n: any) => {
@@ -50,16 +56,26 @@ test("desktop renderer: edit, switch, calendar and linked note", async ({
         state.tasks = [...state.tasks.filter((x) => x.id !== saved.id), saved];
         return saved;
       },
-      GetSettings: async () => ({
-        backupFolder: "",
-        keyConfigured: false,
-        lastBackup: "",
-        backupError: "",
-        dataFolder: "C:\\Users\\test\\AppData\\Local\\Daynote",
-      }),
+      GetSettings: async () => preferences(),
+      SetTheme: async (theme: string) => {
+        localStorage.setItem("daynote.theme", theme);
+        return preferences();
+      },
+      Delete: async (kind: string, id: string) => {
+        if (kind === "topic") {
+          state.topics = state.topics.filter((t) => t.id !== id);
+          state.notes = state.notes.map((n) => (n.topicId === id ? { ...n, topicId: "" } : n));
+        } else if (kind === "note") {
+          state.notes = state.notes.filter((n) => n.id !== id);
+        }
+        return structuredClone(state);
+      },
     };
     (window as any).go = { main: { App: app } };
     (window as any).runtime = {
+      WindowSetDarkTheme: () => {},
+      WindowSetLightTheme: () => {},
+      WindowSetSystemDefaultTheme: () => {},
       EventsOnMultiple: (name: string, f: any) => {
         listeners.set(name, f);
         return () => listeners.delete(name);
@@ -69,15 +85,9 @@ test("desktop renderer: edit, switch, calendar and linked note", async ({
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
-  await expect(page.getByLabel("Заголовок заметки")).toHaveValue(
-    "План на сегодня",
-  );
-  await page
-    .getByLabel("Текст заметки")
-    .fill("Последняя версия перед переключением.");
-  await page
-    .getByRole("button", { name: "Открыть заметку Идеи", exact: true })
-    .click();
+  await expect(page.getByLabel("Заголовок заметки")).toHaveValue("План на сегодня");
+  await page.getByLabel("Текст заметки").fill("Последняя версия перед переключением.");
+  await page.getByRole("button", { name: "Открыть заметку Идеи", exact: true }).click();
   await page
     .getByRole("button", {
       name: "Открыть заметку План на сегодня",
@@ -87,14 +97,31 @@ test("desktop renderer: edit, switch, calendar and linked note", async ({
   await expect(page.getByLabel("Текст заметки")).toHaveValue(
     "Последняя версия перед переключением.",
   );
+  await expect(page.locator("html")).toHaveAttribute("data-theme", testInfo.project.name);
+  await page
+    .getByRole("button", { name: "Открыть заметку Идеи", exact: true })
+    .click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Удалить заметку", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Работа", exact: true }).click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Переименовать тему" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Переименовать тему" }).click();
+  await expect(page.getByLabel("Название темы")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Личное", exact: true }).click({ button: "right" });
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("menuitem", { name: "Удалить тему", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Личное", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Просмотр", exact: true }).click();
+  await expect(page.getByLabel("Просмотр заметки")).toContainText("Последняя версия");
+  await page.getByRole("button", { name: "Редактор", exact: true }).click();
   await page.screenshot({
-    path: "../.superpowers/sdd/2026-11-02-daynote/notes.png",
+    path: `../.superpowers/theme-vite-plus/notes-${testInfo.project.name}.png`,
   });
   await page.getByRole("button", { name: "Календарь", exact: true }).click();
   await page.getByRole("button", { name: "Новая задача", exact: true }).click();
-  await page
-    .getByLabel("Название задачи", { exact: true })
-    .fill("Утренний созвон");
+  await page.getByLabel("Название задачи", { exact: true }).fill("Утренний созвон");
   await page
     .getByLabel("Начало задачи", { exact: true })
     .fill(`${new Date().toLocaleDateString("sv-SE")}T09:00`);
@@ -102,9 +129,7 @@ test("desktop renderer: edit, switch, calendar and linked note", async ({
     .getByLabel("Конец задачи", { exact: true })
     .fill(`${new Date().toLocaleDateString("sv-SE")}T10:00`);
   await page.getByLabel("Прикрепить План на сегодня", { exact: true }).check();
-  await page
-    .getByRole("button", { name: "Сохранить задачу", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Сохранить задачу", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
     page.getByRole("button", {
@@ -113,22 +138,25 @@ test("desktop renderer: edit, switch, calendar and linked note", async ({
     }),
   ).toBeVisible();
   await page.screenshot({
-    path: "../.superpowers/sdd/2026-11-02-daynote/calendar.png",
+    path: `../.superpowers/theme-vite-plus/calendar-${testInfo.project.name}.png`,
   });
-  await page
-    .getByRole("button", { name: "09:00–10:00 Утренний созвон 1", exact: true })
-    .click();
+  await page.getByRole("button", { name: "09:00–10:00 Утренний созвон 1", exact: true }).click();
   await page.getByLabel("Задача завершена", { exact: false }).check();
-  await page
-    .getByRole("button", { name: "Сохранить задачу", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Сохранить задачу", exact: true }).click();
   await expect(page.getByText("Утренний созвон", { exact: true })).toHaveCSS(
     "text-decoration-line",
     "line-through",
   );
   await page.getByRole("button", { name: "Настройки", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Резервные копии в OneDrive" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Резервные копии в OneDrive" })).toBeVisible();
+  await page.selectOption('select[aria-label="Оформление"]', "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.selectOption('select[aria-label="Оформление"]', "system");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", testInfo.project.name);
+  const opposite = testInfo.project.name === "dark" ? "light" : "dark";
+  await page.emulateMedia({ colorScheme: opposite });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", opposite);
   expect(errors).toEqual([]);
 });

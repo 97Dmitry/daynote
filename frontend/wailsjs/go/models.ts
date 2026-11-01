@@ -6,6 +6,7 @@ export namespace main {
 	    lastBackup: string;
 	    backupError: string;
 	    dataFolder: string;
+	    theme: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -18,6 +19,7 @@ export namespace main {
 	        this.lastBackup = source["lastBackup"];
 	        this.backupError = source["backupError"];
 	        this.dataFolder = source["dataFolder"];
+	        this.theme = source["theme"];
 	    }
 	}
 

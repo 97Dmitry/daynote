@@ -11,7 +11,7 @@ help:
 	@echo "make dev: run on Windows"
 	@echo "make check: tests, format, typecheck, vet and Windows x64 build"
 install:
-	cd frontend && pnpm install --frozen-lockfile
+	cd frontend && vp install --frozen-lockfile
 bindings:
 	go run -tags bindings .
 ifneq ($(OS),Windows_NT)
@@ -19,12 +19,12 @@ ifneq ($(OS),Windows_NT)
 endif
 test:
 	go test -race ./...
-	cd frontend && pnpm test
+	cd frontend && vp test run
 frontend-check: bindings
-	cd frontend && pnpm exec prettier --check src e2e playwright.config.ts package.json tsconfig.json vite.config.ts index.html
-	cd frontend && pnpm typecheck
+	cd frontend && vp check
+	cd frontend && vp run typecheck
 frontend-build: bindings
-	cd frontend && pnpm build
+	cd frontend && vp run build
 vet: frontend-build
 	go vet ./...
 	$(WIN_ENV) go vet ./...

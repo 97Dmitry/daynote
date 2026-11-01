@@ -21,24 +21,23 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - name: Set up Vite+, Node and pnpm
+        uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
-          package_json_file: frontend/package.json
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
+          working-directory: frontend
           node-version: '24'
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache: true
+          run-install: false
       - run: make install
       - run: make check
       - name: Verify generated bindings are committed
         run: git diff --exit-code -- frontend/wailsjs
       - name: Install browser
         working-directory: frontend
-        run: pnpm exec playwright install --with-deps chromium
+        run: vp exec playwright install --with-deps chromium
       - name: Browser workflows
         working-directory: frontend
-        run: pnpm exec playwright test
+        run: vp exec playwright test
       - name: Package Windows artifact
         run: |
           python3 scripts/package-notices.py
@@ -71,4 +70,4 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Test Windows packages
-        run: go test -race ./internal/...
+        run: go test -race -tags bindings ./...

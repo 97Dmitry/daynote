@@ -64,22 +64,13 @@ export function Voice({
       setBusy(false);
     }
   };
-  const recording =
-    state === "recording" || state === "connecting" || state === "stopping";
+  const recording = state === "recording" || state === "connecting" || state === "stopping";
   return (
-    <Dialog
-      title="Голосовая заметка"
-      session={session}
-      onClose={() => void close()}
-    >
+    <Dialog title="Голосовая заметка" session={session} onClose={() => void close()}>
       <p className="muted">
-        Запись для «{note.title || "Без названия"}». Звук отправляется Google
-        Gemini.
+        Запись для «{note.title || "Без названия"}». Звук отправляется Google Gemini.
       </p>
-      <div
-        className={`voice-state ${state === "recording" ? "recording" : ""}`}
-        role="status"
-      >
+      <div className={`voice-state ${state === "recording" ? "recording" : ""}`} role="status">
         <Mic size={20} />
         {state === "connecting"
           ? "Подключаем микрофон и Gemini…"
@@ -116,11 +107,7 @@ export function Voice({
         Проверьте текст перед добавлением. Исходная заметка пока не изменилась.
       </p>
       <div className="dialog-footer">
-        <button
-          className="secondary-button"
-          onClick={() => void close()}
-          disabled={busy}
-        >
+        <button className="secondary-button" onClick={() => void close()} disabled={busy}>
           Отмена
         </button>
         {recording ? (

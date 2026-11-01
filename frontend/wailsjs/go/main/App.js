@@ -54,6 +54,10 @@ export function SetGeminiKey(arg1) {
   return window['go']['main']['App']['SetGeminiKey'](arg1);
 }
 
+export function SetTheme(arg1) {
+  return window['go']['main']['App']['SetTheme'](arg1);
+}
+
 export function StartVoice(arg1) {
   return window['go']['main']['App']['StartVoice'](arg1);
 }

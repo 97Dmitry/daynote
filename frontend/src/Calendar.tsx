@@ -1,8 +1,5 @@
 import { useState } from "react";
-import FullCalendar, {
-  type EventDropInfo,
-  type EventResizeDoneInfo,
-} from "@fullcalendar/react";
+import FullCalendar, { type EventDropInfo, type EventResizeDoneInfo } from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/react/daygrid";
 import timeGridPlugin from "@fullcalendar/react/timegrid";
 import interactionPlugin from "@fullcalendar/react/interaction";
@@ -14,13 +11,7 @@ import "@fullcalendar/react/themes/classic/palette.css";
 import { Plus, FileText, CalendarDays, Check, Trash2 } from "lucide-react";
 import { api } from "./api";
 import { Dialog } from "./Dialog";
-import {
-  emptyNote,
-  errorText,
-  type Note,
-  type Snapshot,
-  type Task,
-} from "./types";
+import { emptyNote, errorText, type Note, type Snapshot, type Task } from "./types";
 
 const localInput = (s: string) => {
   const d = new Date(s);
@@ -98,11 +89,7 @@ export function CalendarView({
     }
   };
   const remove = async () => {
-    if (
-      !editing?.id ||
-      !window.confirm("Удалить задачу? Прикреплённые заметки останутся.")
-    )
-      return;
+    if (!editing?.id || !window.confirm("Удалить задачу? Прикреплённые заметки останутся.")) return;
     markBusy(true);
     try {
       onChange(await api.remove("task", editing.id));
@@ -120,23 +107,14 @@ export function CalendarView({
           <h1>Календарь</h1>
           <p>Ваш день, с местом для важного</p>
         </div>
-        <button
-          className="primary-button"
-          onClick={() => setEditing(newTask())}
-          disabled={busy}
-        >
+        <button className="primary-button" onClick={() => setEditing(newTask())} disabled={busy}>
           <Plus size={18} />
           Новая задача
         </button>
       </header>
       <div className="calendar-surface">
         <FullCalendar
-          plugins={[
-            themePlugin,
-            dayGridPlugin,
-            timeGridPlugin,
-            interactionPlugin,
-          ]}
+          plugins={[themePlugin, dayGridPlugin, timeGridPlugin, interactionPlugin]}
           locale={ruLocale}
           firstDay={1}
           initialView="timeGridWeek"
@@ -190,10 +168,7 @@ export function CalendarView({
             }
           }}
           eventClick={(info) => {
-            if (!busy)
-              setEditing(
-                data.tasks.find((t) => t.id === info.event.id) || null,
-              );
+            if (!busy) setEditing(data.tasks.find((t) => t.id === info.event.id) || null);
           }}
           eventDrop={(info) => void updateEvent(info)}
           eventResize={(info) => void updateEvent(info)}
@@ -277,8 +252,7 @@ function TaskDialog({
     if (
       !busy &&
       !creatingBusy &&
-      (!dirty ||
-        window.confirm("Закрыть карточку без сохранения изменений задачи?"))
+      (!dirty || window.confirm("Закрыть карточку без сохранения изменений задачи?"))
     )
       onClose();
   };
@@ -286,11 +260,7 @@ function TaskDialog({
     setError("");
     const a = new Date(start),
       b = new Date(end);
-    if (
-      !Number.isFinite(a.getTime()) ||
-      !Number.isFinite(b.getTime()) ||
-      b <= a
-    ) {
+    if (!Number.isFinite(a.getTime()) || !Number.isFinite(b.getTime()) || b <= a) {
       setError("Конец задачи должен быть позже начала.");
       return;
     }
@@ -381,9 +351,7 @@ function TaskDialog({
             <textarea
               aria-label="Описание задачи"
               value={value.description}
-              onChange={(e) =>
-                setValue({ ...value, description: e.target.value })
-              }
+              onChange={(e) => setValue({ ...value, description: e.target.value })}
               rows={2}
               placeholder="Что нужно подготовить?"
             />
@@ -410,11 +378,7 @@ function TaskDialog({
           </div>
           <div className="attachment-heading">
             <h3>Заметки к задаче</h3>
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => setCreating(!creating)}
-            >
+            <button type="button" className="text-button" onClick={() => setCreating(!creating)}>
               <Plus size={15} />
               Новая заметка
             </button>
@@ -428,9 +392,7 @@ function TaskDialog({
           <div className="attach-list">
             {data.notes
               .filter((n) =>
-                (n.title + " " + n.body)
-                  .toLocaleLowerCase()
-                  .includes(search.toLocaleLowerCase()),
+                (n.title + " " + n.body).toLocaleLowerCase().includes(search.toLocaleLowerCase()),
               )
               .map((n) => (
                 <div className="attach-row" key={n.id}>
@@ -457,9 +419,7 @@ function TaskDialog({
                     onClick={() => {
                       if (
                         !dirty ||
-                        window.confirm(
-                          "Открыть заметку без сохранения изменений задачи?",
-                        )
+                        window.confirm("Открыть заметку без сохранения изменений задачи?")
                       )
                         onOpenNote(n);
                     }}
@@ -527,11 +487,7 @@ function TaskDialog({
           >
             Отмена
           </button>
-          <button
-            type="submit"
-            className="primary-button"
-            disabled={busy || creatingBusy}
-          >
+          <button type="submit" className="primary-button" disabled={busy || creatingBusy}>
             Сохранить задачу
           </button>
         </div>
