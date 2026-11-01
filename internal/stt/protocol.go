@@ -13,9 +13,10 @@ const (
 // ErrBackpressure means the frame was dropped because the worker is not keeping up.
 var ErrBackpressure = errors.New("распознавание не успевает принимать звук")
 
-// ErrUnconfirmed means available text is usable, but the API did not acknowledge
-// processing of the entire audio stream. It must be shown as a review warning.
-var ErrUnconfirmed = errors.New("завершение обработки всего аудио не подтверждено: проверьте последнюю фразу; доступный текст можно сохранить")
+// ErrUnconfirmed means bounded draining ended without a stream-wide completion
+// acknowledgment. After Close and event draining, the consumer checks retained
+// final/interim text to decide whether a review warning is needed.
+var ErrUnconfirmed = errors.New("не получена окончательная расшифровка последней фразы: проверьте текст; доступный текст можно сохранить")
 
 // Update is a transcript change for one utterance of one stream.
 type Update struct {

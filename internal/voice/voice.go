@@ -27,6 +27,7 @@ type Controller struct {
 	id, state, message string
 	warning            string
 	parts              map[string]string
+	kinds              map[string]string
 	order              []string
 	session            stt.SessionAPI
 	stop               func()
@@ -64,6 +65,7 @@ func (c *Controller) Start(id string) error {
 	c.message = ""
 	c.warning = ""
 	c.parts = map[string]string{}
+	c.kinds = map[string]string{}
 	c.order = nil
 	c.mu.Unlock()
 	c.publish()
@@ -128,6 +130,7 @@ func (c *Controller) consume(s stt.SessionAPI, done chan struct{}) {
 				c.order = append(c.order, v.UtteranceID)
 			}
 			c.parts[v.UtteranceID] = v.Text
+			c.kinds[v.UtteranceID] = v.Kind
 		case stt.StreamError:
 			c.message = v.Message
 			go func() { _ = c.Stop() }()
@@ -182,7 +185,19 @@ func (c *Controller) finish(flush bool) error {
 	}
 	c.cancel = nil
 	if errors.Is(err, stt.ErrUnconfirmed) {
-		c.warning = err.Error()
+		// Close and the consumer have finished. Judge the actual retained text,
+		// including any final or interim events received during shutdown.
+		hasFinal, pending := false, false
+		for id, kind := range c.kinds {
+			if kind != stt.KindFinal {
+				pending = true
+			} else if strings.TrimSpace(c.parts[id]) != "" {
+				hasFinal = true
+			}
+		}
+		if !hasFinal || pending {
+			c.warning = err.Error()
+		}
 		err = nil
 	}
 	if err != nil {
@@ -195,6 +210,7 @@ func (c *Controller) finish(flush bool) error {
 		c.message = ""
 		c.warning = ""
 		c.parts = map[string]string{}
+		c.kinds = map[string]string{}
 		c.order = nil
 	}
 	c.mu.Unlock()
