@@ -11,3 +11,7 @@
 .env*
 settings.json
 daynote-backup-*.json
+
+/frontend/test-results/
+/frontend/playwright-report/
+/frontend/*.tsbuildinfo

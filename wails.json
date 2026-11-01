@@ -1,0 +1,13 @@
+{
+ "$schema":"https://wails.io/schemas/config.v2.json",
+ "name":"Daynote",
+ "outputfilename":"Daynote.exe",
+ "frontend:dir":"frontend",
+ "frontend:install":"pnpm install --frozen-lockfile",
+ "frontend:build":"pnpm build",
+ "frontend:dev:watcher":"pnpm dev --host 127.0.0.1",
+ "frontend:dev:serverUrl":"auto",
+ "wailsjsdir":"frontend",
+ "author":{"name":"97Dmitry"},
+ "info":{"companyName":"97Dmitry","productName":"Daynote","productVersion":"0.1.0","comments":"Notes and calendar"}
+}

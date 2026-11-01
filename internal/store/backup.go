@@ -56,6 +56,9 @@ func (s *Store) Export(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if len(data) > MaxBackupBytes {
+		return "", errors.New("резервная копия больше 64 МБ; локальные данные сохранены")
+	}
 	f, err := os.CreateTemp(dir, ".daynote-partial-*")
 	if err != nil {
 		return "", err
